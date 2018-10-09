@@ -54,7 +54,7 @@ def run(prmt, etc=None):
     T, w_i = map(prmt.get, ['T', 'w_i'])
     N, alpha_i, beta_i, c_i = map(prmt.get, ['N', 'alpha_i', 'beta_i', 'c_i'])
     K, R_k = map(prmt.get, ['K', 'R_k'])
-    C_kr, gamma_kr, u_kr, = map(prmt.get, ['C_kr', 'gamma_kr', 'u_kr'])
+    C_kr, N_kr, gamma_kr, u_kr, = map(prmt.get, ['C_kr', 'N_kr', 'gamma_kr', 'u_kr'])
     t_ij, p_krij = map(prmt.get, ['t_ij', 'p_krij'])
     M = len(N) * max(t_ij.values())
     #
@@ -66,7 +66,7 @@ def run(prmt, etc=None):
     x_krij, a_kri = {}, {}
     for k in K:
         for r in R_k[k]:
-            krN = N.union(set(C_kr[k, r]))
+            krN = N_kr[k, r]
             for i in krN:
                 for j in krN:
                     x_krij[k, r, i, j] = EX.addVar(vtype=GRB.BINARY, name='x[%d,%d,%s,%s]' % (k, r, i, j))
@@ -86,7 +86,7 @@ def run(prmt, etc=None):
                      name='TA[%d]' % i)
     for k in K:
         for r in R_k[k]:
-            krN = N.union(set(C_kr[k, r]))
+            krN = N_kr[k, r]
             krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
             # Initiate flow
             EX.addConstr(quicksum(x_krij[k, r, krP, j] for j in krN) == 1,
@@ -117,13 +117,16 @@ def run(prmt, etc=None):
                             name='FC[%d,%d,%s]' % (k, r, i))
     for k in K:
         for r in R_k[k]:
-            krN = N.union(set(C_kr[k, r]))
+            krN = N_kr[k, r]
             krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
             # Initiate arrival time
             EX.addConstr(a_kri[k, r, krP] == 0,
-                         name='iA1[%d,%d]' % (k, r))
-            EX.addConstr(a_kri[k, r, krM] <= u_kr[k, r],
-                         name='iA2[%d,%d]' % (k, r))
+                         name='iAT[%d,%d]' % (k, r))
+            # Detour Limit
+            EX.addConstr(a_kri[k, r, krM] -
+                         quicksum(t_ij[i, j] * x_krij[k, r, i, j]
+                          for i in C_kr[k, r] for j in C_kr[k, r]) <= u_kr[k, r],
+                         name='DL[%d,%d]' % (k, r))
             for i in N:
                 # Time Window
                 EX.addConstr(alpha_i[i] <= a_kri[k, r, i],
@@ -177,7 +180,7 @@ def run(prmt, etc=None):
         _x_krij, _a_kri = {}, {}
         for k in K:
             for r in R_k[k]:
-                krN = N.union(set(C_kr[k, r]))
+                krN = N_kr[k, r]
                 for i in krN:
                     for j in krN:
                         _x_krij[k, r, i, j] = x_krij[k, r, i, j].x
@@ -200,17 +203,16 @@ def run(prmt, etc=None):
             f.write(logContents)
             f.write('\n')
             logContents = 'Details\n'
-            logContents += 'Assignment\n'
             for k in K:
                 assignedTasks = [i for i in T if y_ki[k, i].x > 0.5]
-                logContents += '\t A%d: %s\n' % (k, str(assignedTasks))
+                logContents += 'A%d: %s\n' % (k, str(assignedTasks))
                 for tid in assignedTasks:
                     for r in R_k[k]:
+                        krN = N_kr[k, r]
                         z = 1 if z_kri[k, r, tid].x > 0.5 else 0
-                        logContents += '\t\t T%d-R%d: %d(%s)\n' % (tid, r, z, 'Accomplished' if z == 0 else 'Fail')
+                        logContents += '\t T%d-R%d: %d(%s)\n' % (tid, r, z, 'Accomplished' if z == 0 else 'Fail')
                         #
                         if z == 0:
-                            krN = N.union(set(C_kr[k, r]))
                             krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
                             _route = {}
                             for j in krN:

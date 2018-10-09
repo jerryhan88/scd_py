@@ -44,8 +44,6 @@ class Agent(object):
     font = QFont('Decorative', 12, italic=True)
     maxLineTN = 5
 
-
-
     def __init__(self, aid, agentInfo, drawingInputs):
         self.aid = aid
         self.agentInfo, self.drawingInputs = agentInfo, drawingInputs
@@ -71,7 +69,7 @@ class Agent(object):
             for i in range(len(locS) - 1):
                 dist += np.linalg.norm(locS[i] - locS[i + 1])
             label = QTextDocument()
-            label.setHtml("l<sup>%d</sup><sub>%d</sub>=%.2f u<sup>%d</sup><sub>%d</sub>=%.2f" %
+            label.setHtml("RR<sup>%d</sup><sub>%d</sub>=%.2f u<sup>%d</sup><sub>%d</sub>=%.2f" %
                           (self.aid, r, dist, self.aid, r, timeBudget))
             label.setDefaultFont(Task.font)
             self.luLabels.append(label)
@@ -288,7 +286,7 @@ if __name__ == '__main__':
 
     from problems import euclideanDistEx0
 
-    euclideanDistEx0(pkl_dir='_temp')
+    euclideanDistEx0(dpath='_temp')
 
     dplym_fpath = opath.join('_temp', 'dplym_euclideanDistEx0.pkl')
     # prmts_fpath = opath.join('_temp', 'prmts_euclideanDistEx0.pkl')

@@ -1,12 +1,14 @@
 import os.path as opath
 import os
 import csv, pickle
+import json
 import numpy as np
 from geopy.distance import vincenty
+
 #
 
 
-def euclideanDistEx0(pkl_dir='_temp'):
+def euclideanDistEx0(dpath='_temp'):
     def get_locID(_loc, loc_id):
         loc = tuple(_loc)
         if loc not in loc_id:
@@ -50,17 +52,17 @@ def euclideanDistEx0(pkl_dir='_temp'):
                 #   ...
                 # ],
                   [
-                    [0.2, 10,
+                    [0.2, 10.0,
                         np.array((0.1, 0.15)),
                         [np.array((0.15, 0.2)), np.array((0.7, 0.2))],
                         np.array((0.9, 0.15))
                      ],
-                    [0.5, 3,
+                    [0.5, 3.0,
                        np.array((0.1, 0.18)),
                        [np.array((0.2, 0.16)), np.array((0.6, 0.1))],
                        np.array((0.87, 0.18))
                      ],
-                    [0.3, 1,
+                    [0.3, 1.0,
                         np.array((0.11, 0.2)),
                         [np.array((0.2, 0.25))],
                         np.array((0.93, 0.2))
@@ -68,12 +70,12 @@ def euclideanDistEx0(pkl_dir='_temp'):
 
                   ],
                   [
-                    [0.7, 1,
+                    [0.7, 1.0,
                         np.array((0.1, 0.85)),
                         [np.array((0.2, 0.8)), np.array((0.8, 0.6))],
                         np.array((0.95, 0.5))
                      ],
-                    [0.3, 1,
+                    [0.3, 1.0,
                         np.array((0.13, 0.9)),
                         [np.array((0.25, 0.75)), np.array((0.75, 0.65))],
                         np.array((0.95, 0.6))
@@ -105,12 +107,12 @@ def euclideanDistEx0(pkl_dir='_temp'):
             travel_time[locID0, locID1] = np.linalg.norm(np.array(loc0) - np.array(loc1))
     #
     dplym = [tasksLocTW, agentsRRs]
-    with open(opath.join(pkl_dir, 'dplym_%s.pkl' % problemName), 'wb') as fp:
+    with open(opath.join(dpath, 'dplym_%s.pkl' % problemName), 'wb') as fp:
         pickle.dump(dplym, fp)
     problem = [problemName,
                agents, tasks, travel_time]
     prmt = convert_prob2prmt(*problem)
-    with open(opath.join(pkl_dir, 'prmt_%s.pkl' % problemName), 'wb') as fp:
+    with open(opath.join(dpath, 'prmt_%s.pkl' % problemName), 'wb') as fp:
         pickle.dump(prmt, fp)
     return prmt
 
@@ -237,11 +239,11 @@ def convert_prob2prmt(problemName, agents, tasks, travel_time):
                     _s = 's%d_%d_%d' % (s, k, r)
                     t_ij[i, _s] = travel_time[_N[i], locID]
                     t_ij[_s, i] = travel_time[locID, _N[i]]
-                    c_i[_s] = 0
-            c_i[krP] = 0
-            c_i[krM] = 0
+                    c_i[_s] = 0.0
+            c_i[krP] = 0.0
+            c_i[krM] = 0.0
     #
-    p_krij, C_kr = {}, {}
+    p_krij, C_kr, N_kr = {}, {}, {}
     for k in K:
         for r in R_k[k]:
             krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
@@ -263,8 +265,9 @@ def convert_prob2prmt(problemName, agents, tasks, travel_time):
                     p_krij[k, r, _s0, _s1] = 1
                     p_krij[k, r, _s1, _s0] = 0
             C_kr[k, r].append(krM)
+            N_kr[k, r] = C_kr[k, r] + list(set(_N.keys()))
     #
-    N = set(_N.keys())
+    N = list(set(_N.keys()))
     #
     return {'problemName': problemName,
             'T': T,
@@ -273,12 +276,34 @@ def convert_prob2prmt(problemName, agents, tasks, travel_time):
                 'alpha_i': alpha_i, 'beta_i': beta_i, 'c_i': c_i,
             'K': K,
                 'R_k': R_k,
-            'C_kr': C_kr, 'gamma_kr': gamma_kr, 'u_kr': u_kr,
+            'C_kr': C_kr, 'N_kr': N_kr, 'gamma_kr': gamma_kr, 'u_kr': u_kr,
             't_ij': t_ij, 'p_krij': p_krij
             }
 
 
+def prmt_pkl2json(prmt, dpath='_temp'):
+    for prmtName in ['C_kr', 'gamma_kr', 'u_kr']:
+        converted = {}
+        for (k, r), v in prmt[prmtName].items():
+            converted['%d&%d' % (k, r)] = v
+        prmt[prmtName] = converted
+    converted = {}
+    for (i, j), v in prmt['t_ij'].items():
+        converted['%s&%s' % (i, j)] = v
+    prmt['t_ij'] = converted
+    converted = {}
+    for (k,r, i, j), v in prmt['p_krij'].items():
+        converted['%d&%d&%s&%s' % (k,r, i, j)] = v
+    prmt['p_krij'] = converted
+
+    with open(opath.join(dpath, 'prmt_%s.json' % prmt['problemName']), 'w') as outfile:
+        outfile.write(json.dumps(prmt))
+        # json.dump(y, outfile)
+
+
 if __name__ == '__main__':
     # print(convert_prob2prmt(*ex0()))
-    euclideanDistEx0(pkl_dir='_temp')
+
+    prmt_pkl2json(euclideanDistEx0(dpath='_temp'))
+
 
