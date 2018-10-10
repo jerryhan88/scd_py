@@ -13,7 +13,7 @@ NUM_GROUP = 10
 
 
 def process_raw_data():
-    dpath = opath.join(pf_dpath, 'EZlink1')
+    dpath = opath.join(pf_dpath, 'EZlink')
     if not opath.exists(dpath):
         os.mkdir(dpath)
     #
@@ -86,5 +86,5 @@ def sort_transactions():
 
 
 if __name__ == '__main__':
-    process_raw_data()
-    # sort_transactions()
+    # process_raw_data()
+    sort_transactions()

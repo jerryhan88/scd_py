@@ -84,6 +84,12 @@ def run(prmt, etc=None):
     for i in T:
         EX.addConstr(quicksum(y_ki[k, i] for k in K) <= 1,
                      name='TA[%d]' % i)
+    for i in T:
+        for k in K:
+            for r in R_k[k]:
+                EX.addConstr(z_kri[k, r, i] <= y_ki[k, i],
+                     name='TC[%d,%d,%d]' % (i, k, r))
+    #
     for k in K:
         for r in R_k[k]:
             krN = N_kr[k, r]
@@ -200,34 +206,28 @@ def run(prmt, etc=None):
             logContents += '\t Wall Time: %f\n' % eliWallTime
             logContents += '\t ObjV: %.3f\n' % EX.objVal
             logContents += '\t Gap: %.3f\n' % EX.MIPGap
-            f.write(logContents)
-            f.write('\n')
-            logContents = 'Details\n'
+            logContents += '\n'
+            logContents += 'Details\n'
             for k in K:
                 assignedTasks = [i for i in T if y_ki[k, i].x > 0.5]
                 logContents += 'A%d: %s\n' % (k, str(assignedTasks))
-                for tid in assignedTasks:
-                    for r in R_k[k]:
-                        krN = N_kr[k, r]
-                        z = 1 if z_kri[k, r, tid].x > 0.5 else 0
-                        logContents += '\t T%d-R%d: %d(%s)\n' % (tid, r, z, 'Accomplished' if z == 0 else 'Fail')
-                        #
-                        if z == 0:
-                            krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
-                            _route = {}
-                            for j in krN:
-                                for i in krN:
-                                    if x_krij[k, r, i, j].x > 0.5:
-                                        _route[i] = j
-                            i = krP
-                            route = []
-                            while i != krM:
-                                route.append('%s(%.2f)' % (i, a_kri[k, r, i].x))
-                                i = _route[i]
-                            route.append('%s(%.2f)' % (i, a_kri[k, r, i].x))
-
-                            logContents += '\t\t  %s\n' % str(route)
+                for r in R_k[k]:
+                    krN = N_kr[k, r]
+                    krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
+                    _route = {}
+                    for j in krN:
+                        for i in krN:
+                            if x_krij[k, r, i, j].x > 0.5:
+                                _route[i] = j
+                    i = krP
+                    route = []
+                    while i != krM:
+                        route.append('%s(%.2f)' % (i, a_kri[k, r, i].x))
+                        i = _route[i]
+                    route.append('%s(%.2f)' % (i, a_kri[k, r, i].x))
+                    logContents += '\t R%d: %s\n' % (r, '-'.join(route))
             f.write(logContents)
+
 
 if __name__ == '__main__':
     from problems import ex0, euclideanDistEx0

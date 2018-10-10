@@ -24,20 +24,20 @@ def euclideanDistEx0(dpath='_temp'):
                 #       (pLocX, pLocY), (dLocX, dLocY),
                 #       (pTWa, pTWb), (pTWa, pTWb),
                 # ]
-                [1, 0.1, 0.1,
+                [1.0, 0.1, 0.1,
                     np.array((0.2, 0.21)), np.array((0.7, 0.1)),
                     np.array((0.1, 0.5)), np.array((0.5, 0.6)),
                 ],
-                [1, 0.1, 0.1,
+                [1.0, 0.1, 0.1,
                     np.array((0.3, 0.3)), np.array((0.8, 0.2)),
                     np.array((0.05, 0.95)), np.array((0.05, 0.95))],
-                [1, 0.1, 0.1,
+                [1.0, 0.1, 0.1,
                     np.array((0.15, 0.9)), np.array((0.5, 0.6)),
                     np.array((0.05, 0.42)), np.array((0.5, 0.95))],
-                [1, 0.1, 0.1,
+                [1.0, 0.1, 0.1,
                     np.array((0.2, 0.75)), np.array((0.6, 0.6)),
                     np.array((0.1, 0.4)), np.array((0.35, 0.99))],
-                [1, 0.1, 0.1,
+                [1.0, 0.1, 0.1,
                     np.array((0.9, 0.9)), np.array((0.1, 0.6)),
                     np.array((0.16, 0.6)), np.array((0.3, 0.9))],
                 ]
@@ -282,7 +282,7 @@ def convert_prob2prmt(problemName, agents, tasks, travel_time):
 
 
 def prmt_pkl2json(prmt, dpath='_temp'):
-    for prmtName in ['C_kr', 'gamma_kr', 'u_kr']:
+    for prmtName in ['C_kr', 'N_kr', 'gamma_kr', 'u_kr']:
         converted = {}
         for (k, r), v in prmt[prmtName].items():
             converted['%d&%d' % (k, r)] = v
@@ -292,7 +292,7 @@ def prmt_pkl2json(prmt, dpath='_temp'):
         converted['%s&%s' % (i, j)] = v
     prmt['t_ij'] = converted
     converted = {}
-    for (k,r, i, j), v in prmt['p_krij'].items():
+    for (k, r, i, j), v in prmt['p_krij'].items():
         converted['%d&%d&%s&%s' % (k,r, i, j)] = v
     prmt['p_krij'] = converted
 
