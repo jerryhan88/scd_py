@@ -70,7 +70,7 @@ def process_raw_data():
 
 
 def sort_transactions():
-    dpath = opath.join(pf_dpath, 'EZlink')
+    dpath = opath.join(pf_dpath, 'EZlink1')
     for fn in sorted([fn for fn in os.listdir(dpath) if fn.endswith('.csv')]):
         ifpath = opath.join(dpath, fn)
         df = pd.read_csv(ifpath)
