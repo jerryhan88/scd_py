@@ -86,7 +86,7 @@ def sort_transactions():
             df = df.sort_values(by=['CARD_ID', 'TIMESTAMP'])
             df.to_csv(ifpath, index=False)
 
-    numProcessors = multiprocessing.cpu_count()
+    numProcessors = 3
     worker_fns = [[] for _ in range(numProcessors)]
     for i, fn in enumerate(sorted([fn for fn in os.listdir(dpath) if fn.endswith('.csv')])):
         worker_fns[i % numProcessors].append(fn)
