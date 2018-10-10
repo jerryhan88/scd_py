@@ -9,7 +9,7 @@ import multiprocessing
 from __path_organizer import pf_dpath
 
 EZ_RAW_DATA_HOME = reduce(opath.join, [opath.expanduser("~"), '..', 'SMART', 'ezlink_2013_08'])
-NUM_GROUP = 20
+NUM_GROUP = 10
 
 
 def process_raw_data():
@@ -43,9 +43,23 @@ def process_raw_data1():
     if not opath.exists(dpath):
         os.mkdir(dpath)
     #
+    def write_instances(wid, rows):
+        ofpath = opath.join(dpath, 'EZlink-g%d.csv' % wid)
+        with open(ofpath, 'a') as w_csvfile:
+            writer = csv.writer(w_csvfile, lineterminator='\n')
+            for row in rows:
+                writer.writerow([row[cn] for cn in header])
+    #
     header = ['JOURNEY_ID', 'CARD_ID', 'PASSENGERTYPE', 'TRAVEL_MODE',
                 'BOARDING_STOP_STN', 'ALIGHTING_STOP_STN',
                 'RIDE_START_DATE', 'RIDE_START_TIME', 'RIDE_DISTANCE', 'RIDE_TIME']
+    for gid in range(NUM_GROUP):
+        ofpath = opath.join(dpath, 'EZlink-g%d.csv' % gid)
+        with open(ofpath, 'w') as w_csvfile:
+            writer = csv.writer(w_csvfile, lineterminator='\n')
+            writer.writerow(header)
+    counter = 0
+    worker_row = [[] for _ in range(NUM_GROUP)]
     for fn in os.listdir(EZ_RAW_DATA_HOME):
         if not fn.endswith('.csv'):
             continue
@@ -53,15 +67,29 @@ def process_raw_data1():
         with open(ifpath) as r_csvfile:
             reader = csv.DictReader(r_csvfile)
             for row in reader:
+                counter += 1
                 cid = int(row['CARD_ID'])
-                ofpath = opath.join(dpath, 'EZlink-g%d.csv' % (cid % NUM_GROUP))
-                if not opath.exists(ofpath):
-                    with open(ofpath, 'w') as w_csvfile:
-                        writer = csv.writer(w_csvfile, lineterminator='\n')
-                        writer.writerow(header)
-                with open(ofpath, 'a') as w_csvfile:
-                    writer = csv.writer(w_csvfile, lineterminator='\n')
-                    writer.writerow([row[cn] for cn in header])
+                worker_row[cid % NUM_GROUP].append(row)
+                if counter == 10000:
+                    ps = []
+                    for wid, rows in enumerate(worker_row):
+                        p = multiprocessing.Process(target=write_instances,
+                                                    args=(wid, rows))
+                        ps.append(p)
+                        p.start()
+                    for p in ps:
+                        p.join()
+                    del worker_row
+                    worker_row = [[] for _ in range(NUM_GROUP)]
+                    counter = 0
+    ps = []
+    for wid, rows in enumerate(worker_row):
+        p = multiprocessing.Process(target=write_instances,
+                                    args=(wid, rows))
+        ps.append(p)
+        p.start()
+    for p in ps:
+        p.join()
 
 
 def sort_individual_transaction():
