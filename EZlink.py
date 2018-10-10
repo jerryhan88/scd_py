@@ -60,6 +60,7 @@ def process_raw_data1():
             writer.writerow(header)
     counter = 0
     worker_row = [[] for _ in range(NUM_GROUP)]
+    agent_wid = {}
     for fn in os.listdir(EZ_RAW_DATA_HOME):
         if not fn.endswith('.csv'):
             continue
@@ -69,8 +70,10 @@ def process_raw_data1():
             for row in reader:
                 counter += 1
                 cid = int(row['CARD_ID'])
-                worker_row[cid % NUM_GROUP].append(row)
-                if counter == 10000:
+                if cid not in agent_wid:
+                    agent_wid[cid] = len(agent_wid) % NUM_GROUP
+                worker_row[agent_wid[cid]].append(row)
+                if counter == 50000:
                     ps = []
                     for wid, rows in enumerate(worker_row):
                         p = multiprocessing.Process(target=write_instances,
