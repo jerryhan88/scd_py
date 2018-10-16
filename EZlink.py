@@ -2,7 +2,7 @@ import os.path as opath
 import os
 import csv
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import reduce
 import multiprocessing
 #
@@ -10,6 +10,8 @@ from __path_organizer import pf_dpath
 
 EZ_RAW_DATA_HOME = reduce(opath.join, [opath.expanduser("~"), '..', 'SMART', 'ezlink_2013_08'])
 NUM_GROUP = 10
+MON, TUE, WED, THR, FRI, SAT, SUN = range(7)
+WEEKENDS = [SAT, SUN]
 
 
 def process_raw_data():
@@ -100,6 +102,80 @@ def sort_transactions():
         p.join()
 
 
+def arrange_transactions():
+    STAYING_TIME_LIMIT = 30 * 60  # 30 minutes
+    nd_dt = datetime(2013, 8, 9).date()  # National day
+    header = ['cid', 'date',
+              'start_time', 'end_time',
+              'start_loc', 'end_loc',
+              'sequence']
+    dpath = opath.join(pf_dpath, 'EZlink1')
+
+    def handling_day_seq(cid0, handling_dt, day_seq, ofpath):
+        if handling_dt is not None and \
+                (handling_dt.weekday() not in WEEKENDS and handling_dt != nd_dt):
+            begin_dt, last_dt, sequence = None, None, []
+            for start_dt, sLoc, eLoc, dur in day_seq:
+                if begin_dt is None:
+                    begin_dt = start_dt
+                else:
+                    if (start_dt - last_dt).seconds > STAYING_TIME_LIMIT:
+                        with open(ofpath, 'a') as w_csvfile:
+                            writer = csv.writer(w_csvfile, lineterminator='\n')
+                            writer.writerow([cid0, '%s' % handling_dt,
+                                             begin_dt.strftime('%H:%M:%S'), last_dt.strftime('%H:%M:%S'),
+                                             sequence[0].split('-')[0], sequence[-1].split('-')[1],
+                                             ';'.join(sequence)])
+                        #
+                        begin_dt, sequence = start_dt, []
+                last_dt = start_dt + timedelta(minutes=dur)
+                sequence.append('%s-%s' % (sLoc, eLoc))
+            with open(ofpath, 'a') as w_csvfile:
+                writer = csv.writer(w_csvfile, lineterminator='\n')
+                writer.writerow([cid0, '%s' % handling_dt,
+                                 begin_dt.strftime('%H:%M:%S'), last_dt.strftime('%H:%M:%S'),
+                                 sequence[0].split('-')[0], sequence[-1].split('-')[1],
+                                 ';'.join(sequence)])
+
+    def process_files(_, fn):
+        ofpath = opath.join(dpath, 'arr_%s' % fn)
+        with open(ofpath, 'w') as w_csvfile:
+            writer = csv.writer(w_csvfile, lineterminator='\n')
+            writer.writerow(header)
+        #
+        ifpath = opath.join(dpath, fn)
+        cid0, handling_dt = None, None
+        day_seq = []
+        with open(ifpath) as r_csvfile:
+            reader = csv.DictReader(r_csvfile)
+            for row in reader:
+                try:
+                    eval(row['RIDE_TIME'])
+                except:
+                    continue
+                cid = int(row['CARD_ID'])
+                cur_dt = datetime.strptime('%s %s' % (row['RIDE_START_DATE'], row['RIDE_START_TIME']),
+                                           "%Y-%m-%d %H:%M:%S")
+                if cid0 != cid or handling_dt != cur_dt.date():
+                    handling_day_seq(cid0, handling_dt, day_seq, ofpath)
+                    day_seq = []
+                cid0, handling_dt = cid, cur_dt.date()
+                day_seq.append([cur_dt, row['BOARDING_STOP_STN'], row['ALIGHTING_STOP_STN'], eval(row['RIDE_TIME'])])
+    #
+    worker_fn = []
+    for i, fn in enumerate(sorted([fn for fn in os.listdir(dpath) if fn.endswith('.csv') and not fn.startswith('arr')])):
+        worker_fn.append(fn)
+    ps = []
+    for wid, fn in enumerate(worker_fn):
+        p = multiprocessing.Process(target=process_files,
+                                    args=(wid, fn))
+        ps.append(p)
+        p.start()
+    for p in ps:
+        p.join()
+
+
 if __name__ == '__main__':
     # process_raw_data()
-    sort_transactions()
+    # sort_transactions()
+    arrange_transactions()
