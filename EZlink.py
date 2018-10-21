@@ -12,6 +12,10 @@ EZ_RAW_DATA_HOME = reduce(opath.join, [opath.expanduser("~"), '..', 'SMART', 'ez
 NUM_GROUP = 10
 MON, TUE, WED, THR, FRI, SAT, SUN = range(7)
 WEEKENDS = [SAT, SUN]
+H_SEC, M_SEC = 3600, 60
+LIMIT_NUM_RR = 2  # The limit for the number of routine routes
+TRANSFER_TIME_LIMIT = 30 * 60  # 30 minutes
+NATIONAL_DAY = datetime(2013, 8, 9).date()  # National day
 
 
 def process_raw_data():
@@ -103,8 +107,6 @@ def sort_transactions():
 
 
 def arrange_transactions():
-    STAYING_TIME_LIMIT = 30 * 60  # 30 minutes
-    nd_dt = datetime(2013, 8, 9).date()  # National day
     header = ['cid', 'date',
               'start_time', 'end_time',
               'start_loc', 'end_loc',
@@ -113,13 +115,13 @@ def arrange_transactions():
 
     def handling_day_seq(cid0, handling_dt, day_seq, ofpath):
         if handling_dt is not None and \
-                (handling_dt.weekday() not in WEEKENDS and handling_dt != nd_dt):
+                (handling_dt.weekday() not in WEEKENDS and handling_dt != NATIONAL_DAY):
             begin_dt, last_dt, sequence = None, None, []
             for start_dt, sLoc, eLoc, dur in day_seq:
                 if begin_dt is None:
                     begin_dt = start_dt
                 else:
-                    if (start_dt - last_dt).seconds > STAYING_TIME_LIMIT:
+                    if (start_dt - last_dt).seconds > TRANSFER_TIME_LIMIT:
                         with open(ofpath, 'a') as w_csvfile:
                             writer = csv.writer(w_csvfile, lineterminator='\n')
                             writer.writerow([cid0, '%s' % handling_dt,
@@ -175,7 +177,73 @@ def arrange_transactions():
         p.join()
 
 
+def filter_transactions():
+    dpath = opath.join(pf_dpath, 'EZlink1')
+    header = ['cid', 'numDates',
+              'start_time', 'end_time',
+              'seqCounter', 'sequence']
+
+    def write_seqs(ofpath, cid, dates, seqs):
+        for seq in seqs.keys():
+            if len(seqs[seq]) < LIMIT_NUM_RR:
+                continue
+            sTimeTotal, eTimeTotal = 0, 0
+            for _sTime, _eTime in seqs[seq]:
+                sh, sm, ss = map(int, _sTime.split(':'))
+                sTimeTotal += sh * H_SEC + sm * M_SEC + ss
+                eh, em, es = map(int, _eTime.split(':'))
+                eTimeTotal += eh * H_SEC + em * M_SEC + es
+            mTimes = []
+            for timeTotal in [sTimeTotal, eTimeTotal]:
+                timeAvg = timeTotal / float(len(seqs[seq]))
+                mh = int(timeAvg / H_SEC)
+                mm = int((timeAvg - mh * H_SEC) / M_SEC)
+                ms = int(timeAvg - mh * H_SEC - mm * M_SEC)
+                mTimes.append('%02d:%02d:%02d' % (mh, mm, ms))
+            with open(ofpath, 'a') as w_csvfile:
+                writer = csv.writer(w_csvfile, lineterminator='\n')
+                writer.writerow([cid, len(dates),
+                                 mTimes[0], mTimes[1],
+                                 len(seqs[seq]), seq])
+
+    def process_files(_, fn):
+        ofpath = opath.join(dpath, 'fd_%s' % fn.split('_')[1])
+        with open(ofpath, 'w') as w_csvfile:
+            writer = csv.writer(w_csvfile, lineterminator='\n')
+            writer.writerow(header)
+        cid0 = None
+        dates, seqs = set(), {}
+        ifpath = opath.join(dpath, fn)
+        with open(ifpath) as r_csvfile:
+            reader = csv.DictReader(r_csvfile)
+            for row in reader:
+                cid, _date = [row[cn] for cn in ['cid', 'date']]
+                if cid0 is not None and cid0 != cid:
+                    write_seqs(ofpath, cid0, dates, seqs)
+                    dates, seqs = set(), {}
+                dates.add(_date)
+                seq = row['sequence']
+                if seq not in seqs:
+                    seqs[seq] = []
+                seqs[seq].append([row[cn] for cn in ['start_time', 'end_time']])
+                cid0 = cid
+        write_seqs(ofpath, cid0, dates, seqs)
+    #
+    worker_fn = []
+    for i, fn in enumerate(sorted([fn for fn in os.listdir(dpath) if fn.startswith('arr_')])):
+        worker_fn.append(fn)
+    ps = []
+    for wid, fn in enumerate(worker_fn):
+        p = multiprocessing.Process(target=process_files,
+                                    args=(wid, fn))
+        ps.append(p)
+        p.start()
+    for p in ps:
+        p.join()
+
+
 if __name__ == '__main__':
     # process_raw_data()
     # sort_transactions()
-    arrange_transactions()
+    # arrange_transactions()
+    filter_transactions()
