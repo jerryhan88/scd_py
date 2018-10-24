@@ -76,7 +76,7 @@ def process_raw_data():
 
 
 def sort_transactions():
-    dpath = opath.join(pf_dpath, 'EZlink1')
+    dpath = opath.join(pf_dpath, 'EZlink')
     #
     def process_files(_, fns):
         for fn in fns:
@@ -111,7 +111,7 @@ def arrange_transactions():
               'start_time', 'end_time',
               'start_loc', 'end_loc',
               'sequence']
-    dpath = opath.join(pf_dpath, 'EZlink1')
+    dpath = opath.join(pf_dpath, 'EZlink')
 
     def handling_day_seq(cid0, handling_dt, day_seq, ofpath):
         if handling_dt is not None and \
@@ -178,7 +178,7 @@ def arrange_transactions():
 
 
 def filter_transactions():
-    dpath = opath.join(pf_dpath, 'EZlink1')
+    dpath = opath.join(pf_dpath, 'EZlink')
     header = ['cid', 'numDates',
               'start_time', 'end_time',
               'seqCounter', 'sequence']

@@ -1,15 +1,15 @@
 import os.path as opath
 import sys
 import csv, pickle
-import geopandas as gpd
 
 from __path_organizer import ef_dpath, pf_dpath
 
 
-def get_busStops():
+def get_coordBS():
     csv_fpath = opath.join(pf_dpath, 'busStops.csv')
     pkl_fpath = opath.join(pf_dpath, 'busStops.pkl')
     if not opath.exists(csv_fpath):
+        import geopandas as gpd
         sys.path.append(ef_dpath)
         # noinspection PyUnresolvedReferences
         from SVY21 import SVY21
@@ -19,7 +19,7 @@ def get_busStops():
             writer = csv.writer(w_csvfile, lineterminator='\n')
             new_headers = ['Bus_Stop_ID', 'Roof_ID', 'Lat', 'Lng']
             writer.writerow(new_headers)
-        busStops = {}
+        bs_coord = {}
         #
         gpf = gpd.read_file(opath.join(ef_dpath, 'BusStop.shp'))
         numBusStops = len(gpf)
@@ -32,16 +32,16 @@ def get_busStops():
             with open(csv_fpath, 'a') as w_csvfile:
                 writer = csv.writer(w_csvfile, lineterminator='\n')
                 writer.writerow([bs_num, br_num, lat, lng])
-            busStops[bs_num] = lat, lng
+            bs_coord[bs_num] = lat, lng
         with open(pkl_fpath, 'wb') as fp:
-            pickle.dump(busStops, fp)
+            pickle.dump(bs_coord, fp)
     else:
         with open(pkl_fpath, 'rb') as fp:
-            busStops = pickle.load(fp)
+            bs_coord = pickle.load(fp)
     #
-    return busStops
+    return bs_coord
 
 
 if __name__ == '__main__':
-    for k, v in get_busStops().items():
+    for k, v in get_coordBS().items():
         print(k, v)
