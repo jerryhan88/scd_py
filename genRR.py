@@ -3,15 +3,15 @@ import os
 import csv
 import gc
 from random import randrange
-from datetime import datetime
+from datetime import datetime, timedelta
 
 #
 from __path_organizer import pf_dpath
 from sgMRT import get_coordMRT
 from sgBus import get_coordBS
 
-
-missingBS = {
+NUM_GROUP = 10
+MISSING_BS = {
         '42041': (1.334463, 103.786861),
         '48129': (1.407440, 103.783049),
         '52051': (1.343413, 103.854698),
@@ -44,6 +44,13 @@ missingBS = {
         '46471': (1.447959, 103.797535),
         }
 
+MODI_NAME = {'Harbour Front': 'HarbourFront',
+             'South VIEW': 'South View',
+             'Ten Mile Junctio': 'Ten Mile Junction',
+             }
+
+TIME_BUFFER = 30 * 60  # 30 min.
+
 
 class Node(object):
     def __init__(self, cid, numDates, seqCounter, 
@@ -65,12 +72,6 @@ class Node(object):
             if n1 in n0.descendants:
                 n0.remove_descendant(n1)
 
-NUM_GROUP = 10
-MODI_NAME = {'Harbour Front': 'HarbourFront',
-             'South VIEW': 'South View',
-             'Ten Mile Junctio': 'Ten Mile Junction',
-             }
-
 def run():
     dpath = opath.join(pf_dpath, 'RoutineRoutes')
     if not opath.exists(dpath):
@@ -87,7 +88,7 @@ def run():
             n0 = nodes[i]
             for j in range(i + 1, len(nodes)):
                 n1 = nodes[j]
-                if n0.eTime < n1.sTime:
+                if n0.eTime + timedelta(seconds=TIME_BUFFER) < n1.sTime:
                     n0.descendants.add(n1)
                     n1.ancestors.add(n0)
         root_nodes = []
@@ -139,7 +140,7 @@ def run():
     #
     ez_fpath = opath.join(pf_dpath, 'EZlinkSummary.csv')
     bs_coord = get_coordBS()
-    for k, v in missingBS.items():
+    for k, v in MISSING_BS.items():
         bs_coord[k] = v
     mrt_coord = get_coordMRT()
     cid0 = None
