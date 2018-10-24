@@ -1,9 +1,10 @@
 import os.path as opath
 import os
 import csv
-from datetime import datetime
-from itertools import chain
 import gc
+from random import randrange
+from datetime import datetime
+
 #
 from __path_organizer import pf_dpath
 from sgMRT import get_coordMRT
@@ -146,7 +147,7 @@ def run():
         for row in reader:
             cid = row['cid']
             if cid not in agent_wid:
-                agent_wid[cid] = len(agent_wid) % NUM_GROUP
+                agent_wid[cid] = randrange(NUM_GROUP)
             if cid0 is not None and cid0 != cid:                
                 handle_movements(nodes, agent_wid)
                 for n in nodes:
