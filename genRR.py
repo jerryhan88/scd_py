@@ -111,11 +111,14 @@ def run():
                 n0 = node_stack.pop()
                 n0.movements.append(n0)
                 for n1 in n0.children:
-                    n1.movements += n0.movements
+                    n1.movements = n0.movements[:]
                     if n1.children:
                         node_stack.append(n1)
                     else:
                         n1.movements.append(n1)
+                        # if len(n1.movements) > 10:
+                        #     print(1)
+                        assert len(n1.movements) < 10, n1.movements
                         prob = 1
                         _movements = []
                         for n in n1.movements:
@@ -148,7 +151,7 @@ def run():
             cid = row['cid']
             if cid not in agent_wid:
                 agent_wid[cid] = randrange(NUM_GROUP)
-            if cid0 is not None and cid0 != cid:                
+            if cid0 is not None and cid0 != cid:
                 handle_movements(nodes, agent_wid)
                 for n in nodes:
                     del n
@@ -185,6 +188,10 @@ def run():
                             except:
                                 corrupted = True
             if corrupted:
+                for n in nodes:
+                    del n
+                gc.collect()
+                #
                 cid0 = None
                 nodes, corrupted = [], False
                 continue

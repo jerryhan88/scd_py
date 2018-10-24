@@ -13,7 +13,7 @@ NUM_GROUP = 10
 MON, TUE, WED, THR, FRI, SAT, SUN = range(7)
 WEEKENDS = [SAT, SUN]
 H_SEC, M_SEC = 3600, 60
-LIMIT_NUM_RR = 2  # The limit for the number of routine routes
+LIMIT_NUM_RR = 3  # The limit for the number of routine routes
 TRANSFER_TIME_LIMIT = 30 * 60  # 30 minutes
 NATIONAL_DAY = datetime(2013, 8, 9).date()  # National day
 
