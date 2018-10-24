@@ -117,8 +117,6 @@ def run():
                         node_stack.append(n1)
                     else:
                         n1.movements.append(n1)
-                        # if len(n1.movements) > 10:
-                        #     print(1)
                         assert len(n1.movements) < 10, n1.movements
                         prob = 1
                         _movements = []
