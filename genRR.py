@@ -117,7 +117,6 @@ def run():
                         node_stack.append(n1)
                     else:
                         n1.movements.append(n1)
-                        assert len(n1.movements) < 10, n1.movements
                         prob = 1
                         _movements = []
                         for n in n1.movements:
@@ -173,7 +172,6 @@ def run():
                         except:
                             corrupted = True
                 else:
-
                     for loc in seg.split('-'):
                         if loc.startswith('STN '):
                             loc = get_designatedName(loc[len('STN '):])
