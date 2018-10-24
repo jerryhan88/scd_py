@@ -1,7 +1,6 @@
 import os.path as opath
 import os
 import pickle, csv
-from pykml import parser
 from itertools import chain
 #
 from __path_organizer import ef_dpath, mrtNet_dpath, pf_dpath
@@ -27,6 +26,7 @@ def get_coordMRT():
     csv_fpath = opath.join(pf_dpath, 'MRT_coords.csv')
     pkl_fpath = opath.join(pf_dpath, 'MRT_coords.pkl')
     if not opath.exists(csv_fpath):
+        from pykml import parser
         alt_name = {
             'Harbourfront': 'HarbourFront',
             'Marymount ': 'Marymount',
