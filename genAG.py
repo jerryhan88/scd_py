@@ -1,12 +1,12 @@
 import os.path as opath
 import os
-import csv
-import gc
-from random import randrange
+import csv, pickle
+import numpy as np
+from random import randrange, random, seed
 from datetime import datetime, timedelta
-
+from geopy.distance import vincenty
 #
-from __path_organizer import pf_dpath
+from __path_organizer import pf_dpath, exp_dpath
 from sgMRT import get_coordMRT
 from sgBus import get_coordBS
 
@@ -50,6 +50,8 @@ MODI_NAME = {'Harbour Front': 'HarbourFront',
              }
 
 TIME_BUFFER = 30 * 60  # 30 min.
+MIN_DIST_TRAJ = 5  # km
+SELECTION_PROB = 0.5
 
 
 class Node(object):
@@ -72,7 +74,7 @@ class Node(object):
             if n1 in n0.descendants:
                 n0.remove_descendant(n1)
 
-def run():
+def EZ2RR():
     dpath = opath.join(pf_dpath, 'RoutineRoutes')
     if not opath.exists(dpath):
         os.mkdir(dpath)
@@ -117,13 +119,14 @@ def run():
                         node_stack.append(n1)
                     else:
                         n1.movements.append(n1)
-                        prob = 1
+                        prob = 1.0
                         _movements = []
                         for n in n1.movements:
                             prob *= n.seqCounter / float(n.numDates)
                             _movements.append('%s-%s@%s' % (n.sTime.strftime('%H:%M:%S'),
                                                             n.eTime.strftime('%H:%M:%S'),
                                                             '|'.join(n.traj)))
+                        prob = 1.0 if prob > 1.0 else prob
                         ofpath = opath.join(dpath, 'RoutineRoutes-g%d.csv' % agent_wid[n.cid])
                         with open(ofpath, 'a') as w_csvfile:
                             writer = csv.writer(w_csvfile, lineterminator='\n')
@@ -151,9 +154,6 @@ def run():
                 agent_wid[cid] = randrange(NUM_GROUP)
             if cid0 is not None and cid0 != cid:
                 handle_movements(nodes, agent_wid)
-                for n in nodes:
-                    del n
-                gc.collect()
                 nodes, corrupted = [], False
             seq = row['sequence']
             traj = []
@@ -185,10 +185,6 @@ def run():
                             except:
                                 corrupted = True
             if corrupted:
-                for n in nodes:
-                    del n
-                gc.collect()
-                #
                 cid0 = None
                 nodes, corrupted = [], False
                 continue
@@ -200,10 +196,83 @@ def run():
     handle_movements(nodes, agent_wid)
 
 
-def filtering():
-    pass
+def init_csv(csv_fpath):
+    with open(csv_fpath, 'w') as w_csvfile:
+        writer = csv.writer(w_csvfile, lineterminator='\n')
+        writer.writerow(['cid', 'aid', 'rrid', 'prob', 'sTime', 'eTime', 'movement'])
 
+
+def get_cid_instances(ifpath):
+    cid_instances = {}
+    with open(ifpath) as r_csvfile:
+        reader = csv.DictReader(r_csvfile)
+        for row in reader:
+            cid = row['cid']
+            if cid not in cid_instances:
+                cid_instances[cid] = []
+            cid_instances[cid].append(row)
+    cidOrders = []
+    for cid, rows in cid_instances.items():
+        cidOrders.append([int(rows[0]['numDates']), sum([eval(row['prob']) for row in rows]), cid])
+    cidOrders.sort(reverse=True)
+    return [l[2] for l in cidOrders], cid_instances
+
+
+def gen_agents(rr_fpath, seedNum, prefix, numAgents, dpath=exp_dpath):
+    seed(seedNum)
+    pkl_fpath = opath.join(dpath, '%s.pkl' % prefix)
+    csv_fpath = opath.join(dpath, '%s.csv' % prefix)
+    init_csv(csv_fpath)
+    cids, cid_instances = get_cid_instances(rr_fpath)
+    #
+    agents = []
+    for cid in cids:
+        if SELECTION_PROB < random():
+            continue
+        agt = {}
+        valid = True
+        new_rows = []
+        for j, row in enumerate(cid_instances[cid]):
+            agt['aid'] = len(agents)
+            agt['cid'] = cid
+            agt['RRs'] = []
+            mvts = []
+            for mvt in row['movements'].split('^'):
+                _seTime, traj = mvt.split('@')
+                sTime, eTime = [datetime.strptime(_time, '%H:%M:%S') for _time in _seTime.split('-')]
+                traj = [np.array(tuple(map(eval, latlng.split('#')))) for latlng in traj.split('|')]
+                if vincenty(traj[0], traj[-1]).km < MIN_DIST_TRAJ:
+                    valid = False
+                    break
+                new_rows.append([cid, len(agents), j, row['prob'],
+                                 sTime.strftime('%H:%M:%S'), eTime.strftime('%H:%M:%S'),
+                                 traj])
+                #
+                mvts.append({'sTime': sTime, 'eTime': eTime,
+                             'traj': traj})
+            if not valid:
+                break
+            agt['RRs'].append({'prob': eval(row['prob']),
+                               'mvts': mvts})
+        if not valid:
+            continue
+        #
+        agents.append(agt)
+        with open(csv_fpath, 'a') as w_csvfile:
+            writer = csv.writer(w_csvfile, lineterminator='\n')
+            for row in new_rows:
+                writer.writerow(row)
+        if len(agents) == numAgents:
+            break
+    with open(pkl_fpath, 'wb') as fp:
+        pickle.dump(agents, fp)
 
 
 if __name__ == '__main__':
-    run()
+    # EZ2RR()
+    #
+    gNum, numAgents, seedNum = 0, 5, 0
+    prefix = 'agent-g%d-na%03d-sn%02d' % (gNum, numAgents, seedNum)
+    dpath = opath.join(pf_dpath, 'RoutineRoutes')
+    rr_fpath = opath.join(dpath, 'RoutineRoutes-g%d.csv' % gNum)
+    gen_agents(rr_fpath, seedNum, prefix, numAgents, exp_dpath)

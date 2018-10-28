@@ -43,5 +43,6 @@ def get_coordBS():
 
 
 if __name__ == '__main__':
-    for k, v in get_coordBS().items():
-        print(k, v)
+    print(len(get_coordBS()))
+    # for k, v in get_coordBS().items():
+    #     print(k, v)

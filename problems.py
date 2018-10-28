@@ -4,20 +4,30 @@ import csv, pickle
 import json
 import numpy as np
 from geopy.distance import vincenty
-
 #
+from __path_organizer import exp_dpath
+
+MIN60, SEC60 = 60.0, 60.0
+Meter1000 = 1000.0
+CAR_SPEED = 30.0  # km/hour
+
+MIN_REWARD = 1.0
+MIN_SERVICE_TIME = 5.0  # min.
+DAY2MINUTES = 24 * 60.0
+DEFAULT_TW = (0.0, DAY2MINUTES)
+
+
+def get_locID(_loc, loc_id):
+    loc = tuple(_loc)
+    if loc not in loc_id:
+        locID = len(loc_id)
+        loc_id[loc] = len(loc_id)
+    else:
+        locID = loc_id[loc]
+    return locID
 
 
 def euclideanDistEx0(dpath='_temp'):
-    def get_locID(_loc, loc_id):
-        loc = tuple(_loc)
-        if loc not in loc_id:
-            locID = len(loc_id)
-            loc_id[loc] = len(loc_id)
-        else:
-            locID = loc_id[loc]
-        return locID
-    #
     problemName = 'euclideanDistEx0'
     tasksLocTW = [
                 # [reward, pSerTime, dSerTime
@@ -298,12 +308,81 @@ def prmt_pkl2json(prmt, dpath='_temp'):
 
     with open(opath.join(dpath, 'prmt_%s.json' % prmt['problemName']), 'w') as outfile:
         outfile.write(json.dumps(prmt))
-        # json.dump(y, outfile)
+
+
+def load_pickled(fpath):
+    with open(fpath, 'rb') as fp:
+        _object = pickle.load(fp)
+    return _object
+
+
+def gen_instance(agt_fpath, tk_fpath, dpath=exp_dpath, tb_ratio=0.3):
+    _, _g, _na, _sn_, _nt = opath.basename(tk_fpath).split('-')
+    problemName = '%s-%s-%s-%s' % (_g, _na, _sn_, _nt)
+    #
+    _agents, _tasks = list(map(load_pickled, [agt_fpath, tk_fpath]))
+    #
+    agentsRRs = []
+    for agt in _agents:
+        probSum = sum([aRR['prob'] for aRR in agt['RRs']])
+        RRs = []
+        for aRR in agt['RRs']:
+            mvts = aRR['mvts']
+            o_kr, d_kr = mvts[0]['traj'][0], mvts[-1]['traj'][-1]
+            distSum = 0.0
+            rr = []
+            for i in range(len(mvts) - 1):
+                meanP = np.mean([mvts[i]['traj'][-1], mvts[i + 1]['traj'][0]], axis=0)
+                distSum += vincenty(rr[-1] if i != 0 else o_kr, meanP).km
+                rr.append(meanP)
+            distSum += vincenty(rr[-1], d_kr).km
+            RRs.append([aRR['prob'] / probSum, (distSum / CAR_SPEED) * tb_ratio,
+                        o_kr, rr, d_kr])
+        agentsRRs.append(RRs)
+    tasksLocTW = []
+    for tk in _tasks:
+        tasksLocTW.append([MIN_REWARD, MIN_SERVICE_TIME, MIN_SERVICE_TIME,
+                           np.array([tk[k] for k in ['LatP', 'LngP']]), 
+                           np.array([tk[k] for k in ['LatD', 'LngD']]),
+                           np.array(DEFAULT_TW), np.array(DEFAULT_TW)])
+    #
+    tasks, agents = [], []
+    loc_id = {}
+    for reward, pST, dST, pLoc, dLoc, pTW, dTW in tasksLocTW:
+        pLocID = get_locID(pLoc, loc_id)
+        pa, pb = pTW.tolist()
+        dLocID = get_locID(dLoc, loc_id)
+        da, db = dTW.tolist()
+        tasks.append([reward,
+                      (pLocID, pa, pb, pST),
+                      (dLocID, da, db, dST)])
+    for arr in agentsRRs:
+        routineRoutes = []
+        for prob, timeBudget, oLoc, seqLocs, dLoc in arr:
+            oLocID = get_locID(oLoc, loc_id)
+            seqIDs = tuple([get_locID(loc, loc_id) for loc in seqLocs])
+            dLocID = get_locID(dLoc, loc_id)
+            routineRoutes.append((oLocID, seqIDs, dLocID, timeBudget, prob))
+        agents.append(routineRoutes)
+    travel_time = {}
+    for loc0, locID0 in loc_id.items():
+        for loc1, locID1 in loc_id.items():
+            travel_time[locID0, locID1] = vincenty(loc0, loc1).km / CAR_SPEED
+    #
+    problem = [problemName,
+               agents, tasks, travel_time]
+    prmt = convert_prob2prmt(*problem)
+    with open(opath.join(dpath, 'prmt_%s.pkl' % problemName), 'wb') as fp:
+        pickle.dump(prmt, fp)
+    return prmt
 
 
 if __name__ == '__main__':
     # print(convert_prob2prmt(*ex0()))
-
-    prmt_pkl2json(euclideanDistEx0(dpath='_temp'))
+    #
+    agt_fpath = opath.join(exp_dpath, 'agent-g0-na005-sn00.pkl')
+    tk_fpath = opath.join(exp_dpath, 'task-g0-na005-sn00-nt003.pkl')
+    prmt = gen_instance(agt_fpath, tk_fpath)
+    prmt_pkl2json(prmt, dpath=exp_dpath)
 
 
