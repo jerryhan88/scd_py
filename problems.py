@@ -12,7 +12,7 @@ Meter1000 = 1000.0
 CAR_SPEED = 30.0  # km/hour
 
 MIN_REWARD = 1.0
-MIN_SERVICE_TIME = 5.0  # min.
+MIN_SERVICE_TIME = 5.0 / MIN60  # 5 min. (the unit is hour)
 DAY2MINUTES = 24 * 60.0
 DEFAULT_TW = (0.0, DAY2MINUTES)
 
@@ -205,7 +205,7 @@ def convert_prob2prmt(problemName, agents, tasks, travel_time):
     K = list(range(len(agents)))
     R_k, _C_kr = [], {}
     _o_kr, _d_kr = {}, {}
-    gamma_kr, u_kr = {}, {}
+    gamma_kr, l_kr, u_kr = {}, {}, {}
     for k, routineRoutes in enumerate(agents):
         R_k.append(list(range(len(routineRoutes))))
         for r, (ori_locId, seq, dest_locID, timeBudget, prob) in enumerate(routineRoutes):
@@ -216,6 +216,9 @@ def convert_prob2prmt(problemName, agents, tasks, travel_time):
                 _C_kr[k, r].append(locID)
             _C_kr[k, r].append(dest_locID)
             gamma_kr[k, r] = prob
+            l_kr[k, r] = 0.0
+            for i in range(len(_C_kr[k, r]) - 1):
+                l_kr[k, r] += travel_time[_C_kr[k, r][i], _C_kr[k, r][i + 1]]
             u_kr[k, r] = timeBudget
     #
     t_ij = {}
@@ -286,13 +289,14 @@ def convert_prob2prmt(problemName, agents, tasks, travel_time):
                 'alpha_i': alpha_i, 'beta_i': beta_i, 'c_i': c_i,
             'K': K,
                 'R_k': R_k,
-            'C_kr': C_kr, 'N_kr': N_kr, 'gamma_kr': gamma_kr, 'u_kr': u_kr,
+            'C_kr': C_kr, 'N_kr': N_kr, 'gamma_kr': gamma_kr,
+            'l_kr': l_kr, 'u_kr': u_kr,
             't_ij': t_ij, 'p_krij': p_krij
             }
 
 
 def prmt_pkl2json(prmt, dpath='_temp'):
-    for prmtName in ['C_kr', 'N_kr', 'gamma_kr', 'u_kr']:
+    for prmtName in ['C_kr', 'N_kr', 'gamma_kr', 'l_kr', 'u_kr']:
         converted = {}
         for (k, r), v in prmt[prmtName].items():
             converted['%d&%d' % (k, r)] = v
@@ -316,11 +320,9 @@ def load_pickled(fpath):
     return _object
 
 
-def gen_instance(agt_fpath, tk_fpath, dpath=exp_dpath, tb_ratio=0.3):
-    _, _g, _na, _sn_, _nt = opath.basename(tk_fpath).split('-')
-    problemName = '%s-%s-%s-%s' % (_g, _na, _sn_, _nt)
-    #
-    _agents, _tasks = list(map(load_pickled, [agt_fpath, tk_fpath]))
+def gen_prmt_AGTK(_agents, _tasks, prefix, dpath=exp_dpath, tb_ratio=0.3):
+    with open(opath.join(dpath, 'AGTK_%s.pkl' % prefix), 'wb') as fp:
+        pickle.dump([_agents, _tasks], fp)
     #
     agentsRRs = []
     for agt in _agents:
@@ -369,20 +371,20 @@ def gen_instance(agt_fpath, tk_fpath, dpath=exp_dpath, tb_ratio=0.3):
         for loc1, locID1 in loc_id.items():
             travel_time[locID0, locID1] = vincenty(loc0, loc1).km / CAR_SPEED
     #
-    problem = [problemName,
+    problem = [prefix,
                agents, tasks, travel_time]
     prmt = convert_prob2prmt(*problem)
-    with open(opath.join(dpath, 'prmt_%s.pkl' % problemName), 'wb') as fp:
+    with open(opath.join(dpath, 'prmt_%s.pkl' % prefix), 'wb') as fp:
         pickle.dump(prmt, fp)
     return prmt
 
 
 if __name__ == '__main__':
-    # print(convert_prob2prmt(*ex0()))
+    # prmt_pkl2json(euclideanDistEx0(), dpath=exp_dpath)
     #
     agt_fpath = opath.join(exp_dpath, 'agent-g0-na005-sn00.pkl')
     tk_fpath = opath.join(exp_dpath, 'task-g0-na005-sn00-nt003.pkl')
-    prmt = gen_instance(agt_fpath, tk_fpath)
+    prmt = gen_prmt_AGTK(agt_fpath, tk_fpath)
     prmt_pkl2json(prmt, dpath=exp_dpath)
 
 

@@ -1,12 +1,12 @@
 import os.path as opath
+import pickle, csv
+import json
+import numpy as np
 from xlrd import open_workbook
 from pykml import parser
-import pickle, csv
-import pandas as pd
-import numpy as np
 from shapely.ops import cascaded_union
 from shapely.geometry import Polygon
-import folium, json, webbrowser
+
 #
 from __path_organizer import ef_dpath, pf_dpath
 

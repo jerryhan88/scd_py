@@ -53,6 +53,8 @@ TIME_BUFFER = 30 * 60  # 30 min.
 MIN_DIST_TRAJ = 5  # km
 SELECTION_PROB = 0.5
 
+RR_DPATH = opath.join(pf_dpath, 'RoutineRoutes')
+
 
 class Node(object):
     def __init__(self, cid, numDates, seqCounter, 
@@ -218,24 +220,23 @@ def get_cid_instances(ifpath):
     return [l[2] for l in cidOrders], cid_instances
 
 
-def gen_agents(rr_fpath, seedNum, prefix, numAgents, dpath=exp_dpath):
+def gen_agents(seedNum, prefix, gNum, numAgents, dpath=exp_dpath):
     seed(seedNum)
-    pkl_fpath = opath.join(dpath, '%s.pkl' % prefix)
-    csv_fpath = opath.join(dpath, '%s.csv' % prefix)
+    csv_fpath = opath.join(dpath, 'AG_%s.csv' % prefix)
     init_csv(csv_fpath)
+    rr_fpath = opath.join(RR_DPATH, 'RoutineRoutes-g%d.csv' % gNum)
     cids, cid_instances = get_cid_instances(rr_fpath)
     #
     agents = []
     for cid in cids:
         if SELECTION_PROB < random():
             continue
-        agt = {}
+        agt = {'aid': len(agents),
+               'cid': cid,
+               'RRs': []}
         valid = True
         new_rows = []
         for j, row in enumerate(cid_instances[cid]):
-            agt['aid'] = len(agents)
-            agt['cid'] = cid
-            agt['RRs'] = []
             mvts = []
             for mvt in row['movements'].split('^'):
                 _seTime, traj = mvt.split('@')
@@ -264,15 +265,12 @@ def gen_agents(rr_fpath, seedNum, prefix, numAgents, dpath=exp_dpath):
                 writer.writerow(row)
         if len(agents) == numAgents:
             break
-    with open(pkl_fpath, 'wb') as fp:
-        pickle.dump(agents, fp)
-
+    #
+    return agents
 
 if __name__ == '__main__':
     # EZ2RR()
     #
     gNum, numAgents, seedNum = 0, 5, 0
-    prefix = 'agent-g%d-na%03d-sn%02d' % (gNum, numAgents, seedNum)
-    dpath = opath.join(pf_dpath, 'RoutineRoutes')
-    rr_fpath = opath.join(dpath, 'RoutineRoutes-g%d.csv' % gNum)
-    gen_agents(rr_fpath, seedNum, prefix, numAgents, exp_dpath)
+    prefix = 'g%d-na%03d-sn%02d' % (gNum, numAgents, seedNum)
+    gen_agents(seedNum, prefix, gNum, numAgents, exp_dpath)

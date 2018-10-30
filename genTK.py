@@ -41,14 +41,11 @@ def init_csv(csv_fpath):
                          'LocD', 'LatD', 'LngD'])
 
 
-def gen_tasks(agt_fpath, seedNum, prefix, numTasks, dpath=exp_dpath):
+def gen_tasks(seedNum, prefix, numTasks, agents, dpath=exp_dpath):
     seed(seedNum)
-    pkl_fpath = opath.join(dpath, '%s.pkl' % prefix)
-    csv_fpath = opath.join(dpath, '%s.csv' % prefix)
+    csv_fpath = opath.join(dpath, 'TK_%s.csv' % prefix)
     init_csv(csv_fpath)
     distPoly, distPD = load_baseData()
-    with open(agt_fpath, 'rb') as fp:
-        agents = pickle.load(fp)
     candi_trajs = []
     for agt in agents:
         for aRR in agt['RRs']:
@@ -90,8 +87,7 @@ def gen_tasks(agt_fpath, seedNum, prefix, numTasks, dpath=exp_dpath):
                       'LocP': LocP, 'LatP': LatP, 'LngP': LngP,
                       'LocD': LocD, 'LatD': LatD, 'LngD': LngD})
     #
-    with open(pkl_fpath, 'wb') as fp:
-        pickle.dump(tasks, fp)
+    return tasks
 
 
 if __name__ == '__main__':

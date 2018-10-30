@@ -54,7 +54,7 @@ def run(prmt, etc=None):
     T, w_i = map(prmt.get, ['T', 'w_i'])
     N, alpha_i, beta_i, c_i = map(prmt.get, ['N', 'alpha_i', 'beta_i', 'c_i'])
     K, R_k = map(prmt.get, ['K', 'R_k'])
-    C_kr, N_kr, gamma_kr, u_kr, = map(prmt.get, ['C_kr', 'N_kr', 'gamma_kr', 'u_kr'])
+    C_kr, N_kr, gamma_kr, l_kr, u_kr = map(prmt.get, ['C_kr', 'N_kr', 'gamma_kr', 'l_kr', 'u_kr'])
     t_ij, p_krij = map(prmt.get, ['t_ij', 'p_krij'])
     M = len(N) * max(t_ij.values())
     #
@@ -128,35 +128,34 @@ def run(prmt, etc=None):
             # Initiate arrival time
             EX.addConstr(a_kri[k, r, krP] == 0,
                          name='iAT[%d,%d]' % (k, r))
-            # Detour Limit
-            EX.addConstr(a_kri[k, r, krM] -
-                         quicksum(t_ij[i, j] * x_krij[k, r, i, j]
-                          for i in C_kr[k, r] for j in C_kr[k, r]) <= u_kr[k, r],
-                         name='DL[%d,%d]' % (k, r))
+            # Arrival time calculation
+            for i in krN:
+                for j in krN:
+                    EX.addConstr(a_kri[k, r, i] + c_i[i] + t_ij[i, j] <=
+                                 a_kri[k, r, j] + M * (1 - x_krij[k, r, i, j]),
+                                 name='AT[%d,%d,%s,%s]' % (k, r, i, j))
+            # Time Window
             for i in N:
-                # Time Window
                 EX.addConstr(alpha_i[i] <= a_kri[k, r, i],
                              name='TW_L[%d,%d,%s]' % (k, r, i))
                 EX.addConstr(a_kri[k, r, i] <= beta_i[i],
                              name='TW_U[%d,%d,%s]' % (k, r, i))
+            # Pickup and Delivery Sequence
             for i in T:
                 iP, iM = 'p%d' % i, 'd%d' % i
-                # Pickup and Delivery Sequence
                 EX.addConstr(a_kri[k, r, iP] <= a_kri[k, r, iM],
                              name='PD_S[%d,%d,%d]' % (k, r, i))
+            # Routine route preservation
             for i in C_kr[k, r]:
                 for j in C_kr[k, r]:
-                    # Routine route preservation
                     EX.addConstr(p_krij[k, r, i, j] * a_kri[k, r, i] <= a_kri[k, r, j],
                                  name='RR_P[%d,%d,%s,%s]' % (k, r, i, j))
-            for i in krN:
-                for j in krN:
-                    # Arrival time calculation
-                    EX.addConstr(a_kri[k, r, i] + c_i[i] + t_ij[i, j] <=
-                                 a_kri[k, r, j] + M * (1 - x_krij[k, r, i, j]),
-                                 name='AT[%d,%d,%s,%s]' % (k, r, i, j))
+            # Detour Limit
+            EX.addConstr(quicksum(t_ij[i, j] * x_krij[k, r, i, j]
+                              for i in krN for j in krN) - l_kr[k, r] <= u_kr[k, r],
+                         name='DL[%d,%d]' % (k, r))
+            # Task assignment and accomplishment
             for i in T:
-                # Task assignment and accomplishment
                 EX.addConstr(y_ki[k, i] - quicksum(x_krij[k, r, 'p%d' % i, j] for j in krN) <=
                              z_kri[k, r, i],
                              name='tAA[%d,%d,%d]' % (k, r, i))
@@ -232,13 +231,22 @@ def run(prmt, etc=None):
 if __name__ == '__main__':
     from problems import ex0, euclideanDistEx0
     # prmt = ex0()
-    prmt = euclideanDistEx0()
+    # prmt = euclideanDistEx0()
+
+
+    # import pickle
+    #
+    with open(opath.join('_temp', 'prmt_g0-na005-nt003-sn00.pkl'), 'rb') as fp:
+        prmt = pickle.load(fp)
+
+
     problemName = prmt['problemName']
-    etc = {'solFilePKL': opath.join('_temp', 'sol_%s_EX.pkl' % problemName),
-           'solFileCSV': opath.join('_temp', 'sol_%s_EX.csv' % problemName),
-           'solFileTXT': opath.join('_temp', 'sol_%s_EX.txt' % problemName),
-           'logFile': opath.join('_temp', '%s_EX.log' % problemName),
-           'itrFileCSV': opath.join('_temp', '%s_itrEX.csv' % problemName),
+    approach = 'ILP'
+    etc = {'solFilePKL': opath.join('_temp', 'sol_%s_%s.pkl' % (problemName, approach)),
+           'solFileCSV': opath.join('_temp', 'sol_%s_%s.csv' % (problemName, approach)),
+           'solFileTXT': opath.join('_temp', 'sol_%s_%s.txt' % (problemName, approach)),
+           'logFile': opath.join('_temp', '%s_%s.log' % (problemName, approach)),
+           'itrFileCSV': opath.join('_temp', '%s_itr%s.csv' % (problemName, approach)),
            }
 
     run(prmt, etc)
