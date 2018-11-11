@@ -51,148 +51,151 @@ def run(prmt, etc=None):
                 itr2file(etc['itrFileCSV'], ['%.2f' % eliCpuTimeP, '%.2f' % eliWallTimeP,
                                              '%.2f' % objbst, '%.2f' % objbnd, '%.2f' % gap])
     #
-    T, w_i = map(prmt.get, ['T', 'w_i'])
-    N, alpha_i, beta_i, c_i = map(prmt.get, ['N', 'alpha_i', 'beta_i', 'c_i'])
-    K, R_k = map(prmt.get, ['K', 'R_k'])
-    C_kr, N_kr, gamma_kr, l_kr, u_kr = map(prmt.get, ['C_kr', 'N_kr', 'gamma_kr', 'l_kr', 'u_kr'])
-    t_ij, p_krij = map(prmt.get, ['t_ij', 'p_krij'])
+    H, K, N, A = map(prmt.get, ['H', 'K', 'N', 'A'])
+    h_k, n_k, v_k, w_k, r_k = map(prmt.get, ['h_k', 'n_k', 'v_k', 'w_k', 'r_k'])
+    v_a, w_a, E_a = map(prmt.get, ['v_a', 'w_a', 'E_a'])
+    p_ae, l_ae, u_ae = map(prmt.get, ['p_ae', 'l_ae', 'u_ae'])
+    S_ae, N_ae, c_aeij = map(prmt.get, ['S_ae', 'N_ae', 'c_aeij'])
+    t_ij, al_i, be_i, ga_i, F_ae = map(prmt.get, ['t_ij', 'al_i', 'be_i', 'ga_i', 'F_ae'])
     M = len(N) * max(t_ij.values())
     #
-    EX = Model('EX')
-    y_ki = {(k, i): EX.addVar(vtype=GRB.BINARY, name='y[%d,%d]' % (k, i))
-            for k in K for i in T}
-    z_kri = {(k, r, i): EX.addVar(vtype=GRB.BINARY, name='z[%d,%d,%d]' % (k, r, i))
-            for k in K for r in R_k[k] for i in T}
-    x_krij, a_kri = {}, {}
-    for k in K:
-        for r in R_k[k]:
-            krN = N_kr[k, r]
-            for i in krN:
-                for j in krN:
-                    x_krij[k, r, i, j] = EX.addVar(vtype=GRB.BINARY, name='x[%d,%d,%s,%s]' % (k, r, i, j))
-                a_kri[k, r, i] = EX.addVar(vtype=GRB.CONTINUOUS, name='a[%d,%d,%s]' % (k, r, i))
-    EX.update()
+    ILP = Model('ILP')
+    y_ak = {(a, k): ILP.addVar(vtype=GRB.BINARY, name='y[%d,%d]' % (a, k))
+            for a in A for k in K}
+    z_aek = {(a, e, k): ILP.addVar(vtype=GRB.BINARY, name='z[%d,%d,%d]' % (a, e, k))
+            for a in A for e in E_a[a] for k in K}
+    x_aeij, mu_aei = {}, {}
+    for a in A:
+        for e in E_a[a]:
+            aeN = N_ae[a, e]
+            for i in aeN:
+                for j in aeN:
+                    x_aeij[a, e, i, j] = ILP.addVar(vtype=GRB.BINARY, name='x[%d,%d,%s,%s]' % (a, e, i, j))
+                mu_aei[a, e, i] = ILP.addVar(vtype=GRB.CONTINUOUS, name='a[%d,%d,%s]' % (a, e, i))
+    ILP.update()
     #
     obj = LinExpr()
-    for i in T:
-        for k in K:
-            obj += w_i[i] * y_ki[k, i]
-            for r in R_k[k]:
-                obj -= w_i[i] * gamma_kr[k, r] * z_kri[k, r, i]
-    EX.setObjective(obj, GRB.MAXIMIZE)
-    #
-    for i in T:
-        EX.addConstr(quicksum(y_ki[k, i] for k in K) <= 1,
-                     name='TA[%d]' % i)
-    for i in T:
-        for k in K:
-            for r in R_k[k]:
-                EX.addConstr(z_kri[k, r, i] <= y_ki[k, i],
-                     name='TC[%d,%d,%d]' % (i, k, r))
+    for k in K:
+        for a in A:
+            obj += r_k[k] * y_ak[a, k]
+            for e in E_a[a]:
+                obj -= r_k[k] * p_ae[a, e] * z_aek[a, e, k]
+    ILP.setObjective(obj, GRB.MAXIMIZE)
     #
     for k in K:
-        for r in R_k[k]:
-            krN = N_kr[k, r]
-            krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
+        ILP.addConstr(quicksum(y_ak[a, k] for a in A) <= 1,
+                     name='TA[%d]' % k)
+    for a in A:
+        ILP.addConstr(quicksum(v_k[k] * y_ak[a, k] for k in K) <= v_a[a],
+                      name='V[%d]' % k)
+        ILP.addConstr(quicksum(w_k[k] * y_ak[a, k] for k in K) <= w_a[a],
+                      name='W[%d]' % k)
+        for e in E_a[a]:
+            for k in K:
+                ILP.addConstr(z_aek[a, e, k] <= y_ak[a, k],
+                     name='TC[%d,%d,%d]' % (a, e, k))
+    #
+    for a in A:
+        for e in E_a[a]:
+            aeS, aeN, aeF = S_ae[a, e], N_ae[a, e], F_ae[a, e]
+            o_ae, d_ae = 's0_%d_%d' % (a, e), 's%d_%d_%d' % (len(aeS) - 1, a, e)
             # Initiate flow
-            EX.addConstr(quicksum(x_krij[k, r, krP, j] for j in krN) == 1,
-                        name='iFO[%d,%d]' % (k, r))
-            EX.addConstr(quicksum(x_krij[k, r, j, krM] for j in krN) == 1,
-                        name='iFD[%d,%d]' % (k, r))
-            for i in C_kr[k, r]:
-                if i == krP or i == krM:
+            ILP.addConstr(quicksum(x_aeij[a, e, o_ae, j] for j in aeN) == 1,
+                        name='iFO[%d,%d]' % (a, e))
+            ILP.addConstr(quicksum(x_aeij[a, e, j, d_ae] for j in aeN) == 1,
+                        name='iFD[%d,%d]' % (a, e))
+            for i in aeS:
+                if i == o_ae or i == d_ae:
                     continue
-                EX.addConstr(quicksum(x_krij[k, r, i, j] for j in krN if j != i) == 1,
-                             name='iFS1[%d,%d,%s]' % (k, r, i))
-                EX.addConstr(quicksum(x_krij[k, r, j, i] for j in krN if j != i) == 1,
-                             name='iFS2[%d,%d,%s]' % (k, r, i))
+                ILP.addConstr(quicksum(x_aeij[a, e, i, j] for j in aeN if j != i) == 1,
+                             name='iFS1[%d,%d,%s]' % (a, e, i))
+                ILP.addConstr(quicksum(x_aeij[a, e, j, i] for j in aeN if j != i) == 1,
+                             name='iFS2[%d,%d,%s]' % (a, e, i))
             # No flow
-            EX.addConstr(quicksum(x_krij[k, r, j, krP] for j in krN) == 0,
-                         name='xFO[%d,%d]' % (k, r))
-            EX.addConstr(quicksum(x_krij[k, r, krM, j] for j in krN) == 0,
-                         name='xFD[%d,%d]' % (k, r))
-            for i in T:
-                # Flow conservation related to a task
-                EX.addConstr(quicksum(x_krij[k, r, 'p%d' % i, j] for j in krN) ==
-                             quicksum(x_krij[k, r, j, 'd%d' % i] for j in krN),
-                            name='tFC[%d,%d,%d]' % (k, r, i))
+            ILP.addConstr(quicksum(x_aeij[a, e, j, o_ae] for j in aeN) == 0,
+                         name='xFO[%d,%d]' % (a, e))
+            ILP.addConstr(quicksum(x_aeij[a, e, d_ae, j] for j in aeN) == 0,
+                         name='xFD[%d,%d]' % (a, e))
+            for k in set(K).difference(set(aeF)):
+                ILP.addConstr(quicksum(x_aeij[a, e, n_k[k], j] for j in aeN) == 0,
+                              name='xFN[%d,%d,%d]' % (a, e, k))
+            # Flow about delivery nodes; only when the warehouse visited
+            for k in K:
+                ILP.addConstr(quicksum(x_aeij[a, e, n_k[k], j] for j in aeN) <=
+                              quicksum(x_aeij[a, e, j, h_k[k]] for j in aeN),
+                            name='tFC[%d,%d,%d]' % (a, e, k))
+            # Flow conservation
             for i in N:
-                # Flow conservation
-                EX.addConstr(quicksum(x_krij[k, r, i, j] for j in krN) ==
-                             quicksum(x_krij[k, r, j, i] for j in krN),
-                            name='FC[%d,%d,%s]' % (k, r, i))
-    for k in K:
-        for r in R_k[k]:
-            krN = N_kr[k, r]
-            krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
-            # Initiate arrival time
-            EX.addConstr(a_kri[k, r, krP] == 0,
-                         name='iAT[%d,%d]' % (k, r))
-            # Arrival time calculation
-            for i in krN:
-                for j in krN:
-                    EX.addConstr(a_kri[k, r, i] + c_i[i] + t_ij[i, j] <=
-                                 a_kri[k, r, j] + M * (1 - x_krij[k, r, i, j]),
-                                 name='AT[%d,%d,%s,%s]' % (k, r, i, j))
+                ILP.addConstr(quicksum(x_aeij[a, e, i, j] for j in aeN) ==
+                             quicksum(x_aeij[a, e, j, i] for j in aeN),
+                            name='FC[%d,%d,%s]' % (a, e, i))
+    for a in A:
+        for e in E_a[a]:
+            aeS, aeN = S_ae[a, e], N_ae[a, e]
             # Time Window
-            for i in N:
-                EX.addConstr(alpha_i[i] <= a_kri[k, r, i],
-                             name='TW_L[%d,%d,%s]' % (k, r, i))
-                EX.addConstr(a_kri[k, r, i] <= beta_i[i],
-                             name='TW_U[%d,%d,%s]' % (k, r, i))
-            # Pickup and Delivery Sequence
-            for i in T:
-                iP, iM = 'p%d' % i, 'd%d' % i
-                EX.addConstr(a_kri[k, r, iP] <= a_kri[k, r, iM],
-                             name='PD_S[%d,%d,%d]' % (k, r, i))
+            for i in aeN:
+                ILP.addConstr(al_i[i] <= mu_aei[a, e, i],
+                              name='TW_L[%d,%d,%s]' % (a, e, i))
+                ILP.addConstr(mu_aei[a, e, i] <= be_i[i],
+                              name='TW_U[%d,%d,%s]' % (a, e, i))
+            # Warehouse and Delivery Sequence
+            for k in K:
+                ILP.addConstr(mu_aei[a, e, h_k[k]] <= mu_aei[a, e, n_k[k]],
+                              name='WD_S[%d,%d,%d]' % (a, e, k))
             # Routine route preservation
-            for i in C_kr[k, r]:
-                for j in C_kr[k, r]:
-                    EX.addConstr(p_krij[k, r, i, j] * a_kri[k, r, i] <= a_kri[k, r, j],
-                                 name='RR_P[%d,%d,%s,%s]' % (k, r, i, j))
+            for i in aeS:
+                for j in aeS:
+                    ILP.addConstr(c_aeij[a, e, i, j] * mu_aei[a, e, i] <= mu_aei[a, e, j],
+                                  name='RR_P[%d,%d,%s,%s]' % (a, e, i, j))
+            # Arrival time calculation
+            for i in aeN:
+                for j in aeN:
+                    ILP.addConstr(mu_aei[a, e, i] + ga_i[i] + t_ij[i, j] <=
+                                  mu_aei[a, e, j] + M * (1 - x_aeij[a, e, i, j]),
+                                  name='AT[%d,%d,%s,%s]' % (a, e, i, j))
             # Detour Limit
-            EX.addConstr(quicksum(t_ij[i, j] * x_krij[k, r, i, j]
-                              for i in krN for j in krN) - l_kr[k, r] <= u_kr[k, r],
-                         name='DL[%d,%d]' % (k, r))
-            # Task assignment and accomplishment
-            for i in T:
-                EX.addConstr(y_ki[k, i] - quicksum(x_krij[k, r, 'p%d' % i, j] for j in krN) <=
-                             z_kri[k, r, i],
-                             name='tAA[%d,%d,%d]' % (k, r, i))
+            ILP.addConstr(quicksum(t_ij[i, j] * x_aeij[a, e, i, j]
+                              for i in aeN for j in aeN) - l_ae[a, e] <= u_ae[a, e],
+                         name='DL[%d,%d]' % (a, e))
+            # Complicated and Combined constraints
+            for k in K:
+                ILP.addConstr(y_ak[a, k] - quicksum(x_aeij[a, e, j, n_k[k]] for j in aeN) <=
+                             z_aek[a, e, k],
+                             name='CC[%d,%d,%d]' % (a, e, k))
     #
-    EX.setParam('LazyConstraints', True)
-    EX.setParam('Threads', NUM_CORES)
+    ILP.setParam('LazyConstraints', True)
+    ILP.setParam('Threads', NUM_CORES)
     if etc['logFile']:
-        EX.setParam('LogFile', etc['logFile'])
-    EX.optimize(callbackF)
+        ILP.setParam('LogFile', etc['logFile'])
+    ILP.optimize(callbackF)
     #
-    if EX.status == GRB.Status.INFEASIBLE:
-        EX.write('%s.lp' % prmt['problemName'])
-        EX.computeIIS()
-        EX.write('%s.ilp' % prmt['problemName'])
+    if ILP.status == GRB.Status.INFEASIBLE:
+        ILP.write('%s.lp' % prmt['problemName'])
+        ILP.computeIIS()
+        ILP.write('%s.ilp' % prmt['problemName'])
     #
-    if etc and EX.status != GRB.Status.INFEASIBLE:
+    if etc and ILP.status != GRB.Status.INFEASIBLE:
         for k in ['solFileCSV', 'solFilePKL', 'solFileTXT']:
             assert k in etc
         #
         endCpuTime, endWallTime = time.clock(), time.time()
         eliCpuTime, eliWallTime = endCpuTime - startCpuTime, endWallTime - startWallTime
-        res2file(etc['solFileCSV'], EX.objVal, EX.MIPGap, eliCpuTime, eliWallTime)
+        res2file(etc['solFileCSV'], ILP.objVal, ILP.MIPGap, eliCpuTime, eliWallTime)
         #
 
-        _y_ki = {(k, i): y_ki[k, i].x for k in K for i in T}
-        _z_kri = {(k, r, i): z_kri[k, r, i].x for k in K for r in R_k[k] for i in T}
-        _x_krij, _a_kri = {}, {}
-        for k in K:
-            for r in R_k[k]:
-                krN = N_kr[k, r]
-                for i in krN:
-                    for j in krN:
-                        _x_krij[k, r, i, j] = x_krij[k, r, i, j].x
-                    _a_kri[k, r, i] = a_kri[k, r, i].x
+        _y_ak = {(a, k): y_ak[a, k].x for a in A for k in K}
+        _z_aek = {(a, e, k): z_aek[a, e, k].x for a in A for e in E_a[a] for k in K}
+        _x_aeij, _mu_aei = {}, {}
+        for a in A:
+            for e in E_a[a]:
+                aeN = N_ae[a, e]
+                for i in aeN:
+                    for j in aeN:
+                        _x_aeij[a, e, i, j] = x_aeij[a, e, i, j].x
+                    _mu_aei[a, e, i] = mu_aei[a, e, i].x
         sol = {
-            'y_ki': _y_ki, 'z_kri': _z_kri,
-            'x_krij': _x_krij, 'a_kri': _a_kri,
+            'y_ak': _y_ak, 'z_aek': _z_aek,
+            'x_aeij': _x_aeij, 'mu_aei': _mu_aei,
         }
         with open(etc['solFilePKL'], 'wb') as fp:
             pickle.dump(sol, fp)
@@ -203,41 +206,50 @@ def run(prmt, etc=None):
             logContents = 'Summary\n'
             logContents += '\t Cpu Time: %f\n' % eliCpuTime
             logContents += '\t Wall Time: %f\n' % eliWallTime
-            logContents += '\t ObjV: %.3f\n' % EX.objVal
-            logContents += '\t Gap: %.3f\n' % EX.MIPGap
+            logContents += '\t ObjV: %.3f\n' % ILP.objVal
+            logContents += '\t Gap: %.3f\n' % ILP.MIPGap
             logContents += '\n'
             logContents += 'Details\n'
-            for k in K:
-                assignedTasks = [i for i in T if y_ki[k, i].x > 0.5]
-                logContents += 'A%d: %s\n' % (k, str(assignedTasks))
-                for r in R_k[k]:
-                    krN = N_kr[k, r]
-                    krP, krM = 'o_%d_%d' % (k, r), 'd_%d_%d' % (k, r)
+            for a in A:
+                assignedTasks, meaninglessNodes = [], set(N)
+                for k in K:
+                    if y_ak[a, k].x > 0.5:
+                        assignedTasks.append(k)
+                        for i in [h_k[k], n_k[k]]:
+                            if i in meaninglessNodes:
+                                meaninglessNodes.remove(i)
+                logContents += 'A%d: %s\n' % (a, str(assignedTasks))
+                for e in E_a[a]:
+                    aeS, aeN = S_ae[a, e], N_ae[a, e]
+                    o_ae, d_ae = 's0_%d_%d' % (a, e), 's%d_%d_%d' % (len(aeS) - 1, a, e)
                     _route = {}
-                    for j in krN:
-                        for i in krN:
-                            if x_krij[k, r, i, j].x > 0.5:
+                    for j in aeN:
+                        for i in aeN:
+                            if x_aeij[a, e, i, j].x > 0.5:
                                 _route[i] = j
-                    i = krP
+                    i = o_ae
                     route = []
-                    while i != krM:
-                        route.append('%s(%.2f)' % (i, a_kri[k, r, i].x))
+                    accomplishedTasks = []
+                    while i != d_ae:
+                        if i not in meaninglessNodes:
+                            route.append('%s(%.2f)' % (i, mu_aei[a, e, i].x))
+                            if i.startswith('n'):
+                                accomplishedTasks.append(int(i[len('n'):]))
                         i = _route[i]
-                    route.append('%s(%.2f)' % (i, a_kri[k, r, i].x))
-                    logContents += '\t R%d: %s\n' % (r, '-'.join(route))
+                    route.append('%s(%.2f)' % (i, mu_aei[a, e, i].x))
+                    logContents += '\t R%d%s: %s\n' % (e, str(accomplishedTasks), '-'.join(route))
             f.write(logContents)
 
 
 if __name__ == '__main__':
-    from problems import ex0, euclideanDistEx0
-    # prmt = ex0()
-    # prmt = euclideanDistEx0()
+    from problems import euclideanDistEx0
+    prmt = euclideanDistEx0()
 
 
     # import pickle
     #
-    with open(opath.join('_temp', 'prmt_g0-na005-nt003-sn00.pkl'), 'rb') as fp:
-        prmt = pickle.load(fp)
+    # with open(opath.join('_temp', 'prmt_g0-na005-nt003-sn00.pkl'), 'rb') as fp:
+    #     prmt = pickle.load(fp)
 
 
     problemName = prmt['problemName']

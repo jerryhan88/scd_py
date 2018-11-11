@@ -7,12 +7,12 @@ from shapely.geometry import Polygon, Point
 from PyQt5.QtWidgets import QWidget, QApplication, QShortcut
 from PyQt5.QtGui import (QPainter, QFont, QPen, QColor, QKeySequence, QTextDocument,
                          QImage, QPalette)
-from PyQt5.QtCore import Qt, QSize, QRectF, QSizeF
+from PyQt5.QtCore import Qt, QSize, QRectF, QSizeF, QPointF
 #
-from sgDistrict import get_sgBorder, get_distPoly
+from sgDistrict import get_sgBorder, get_distPoly, get_districtZone
 from colour import Color
 
-
+ALPHA = 100
 
 
 pallet = [
@@ -105,8 +105,7 @@ class Viz(QWidget):
         self.show()
 
     def save_img(self):
-        pass
-        # self.image.save(self.fpaths['vizF'], 'png')
+        self.image.save('temp.png', 'png')
 
     def paintEvent(self, e):
         for canvas in [self, self.image]:
@@ -141,24 +140,22 @@ class Viz(QWidget):
         self.sg = Singapore(sgBoarderXY, sgDistrictXY)
         self.objForDrawing = [self.sg]
         #
-        with open(self.fpaths['agentF'], 'rb') as fp:
-            agents = pickle.load(fp)
-        for agt in agents:
-            RRs = []
-            for aRR in agt['RRs']:
-                trajXY = []
-                for mvt in aRR['mvts']:
-                    trajXY.append([convert_GPS2xy(lng, lat) for lat, lng in mvt['traj']])
-                RRs.append([aRR['prob'], trajXY])
-            self.objForDrawing.append(Agent(agt['aid'], agt['cid'], RRs))
-        #
-        with open(self.fpaths['taskF'], 'rb') as fp:
-            tasks = pickle.load(fp)
-        for tk in tasks:
-            pcx, pcy = convert_GPS2xy(tk['LngP'], tk['LatP'])
-            dcx, dcy = convert_GPS2xy(tk['LngD'], tk['LatD'])
-            self.objForDrawing.append(Task(tk['tid'],
-                                           [pcx, pcy], [dcx, dcy]))
+        if self.fpaths:
+            with open(self.fpaths['AGTK'], 'rb') as fp:
+                agents, tasks = pickle.load(fp)
+            for agt in agents:
+                RRs = []
+                for aRR in agt['RRs']:
+                    trajXY = []
+                    for mvt in aRR['mvts']:
+                        trajXY.append([convert_GPS2xy(lng, lat) for lat, lng in mvt['traj']])
+                    RRs.append([aRR['prob'], trajXY])
+                self.objForDrawing.append(Agent(agt['aid'], agt['cid'], RRs))
+            for tk in tasks:
+                pcx, pcy = convert_GPS2xy(tk['LngP'], tk['LatP'])
+                dcx, dcy = convert_GPS2xy(tk['LngD'], tk['LatD'])
+                self.objForDrawing.append(Task(tk['tid'],
+                                               [pcx, pcy], [dcx, dcy]))
 
 
     def mousePressEvent(self, QMouseEvent):
@@ -213,7 +210,7 @@ class Agent(object):
         pen_color = QColor(pallet[self.aid % len(pallet)])
         for rrid, (_, trajs) in enumerate(self.RRs):
             ix, iy = trajs[0][0]
-            qp.setPen(QPen(pen_color, 1, style=lineStyle[rrid % len(lineStyle)]))
+            qp.setPen(QPen(pen_color, 2, style=lineStyle[rrid % len(lineStyle)]))
             qp.drawText(ix, iy, '%s_%d' % (self.aid, rrid))
             traj = list(chain(*trajs))
             px, py = traj[0]
@@ -225,11 +222,14 @@ class Agent(object):
 
 class Singapore(object):
     def __init__(self, sgBoarderXY, sgDistrictXY):
-        self.sgBoarderXY = sgBoarderXY
+        self.sgBoarderXY = [[QPointF(*xy) for xy in points] for points in sgBoarderXY]
         self.sgDistrictXY = sgDistrictXY
         self.sgDistrictPolyXY = {}
-        for dist_name, points in self.sgDistrictXY.items():
-            self.sgDistrictPolyXY[dist_name] = Polygon(points)
+        for dn, points in self.sgDistrictXY.items():
+            self.sgDistrictPolyXY[dn] = Polygon(points)
+            self.sgDistrictXY[dn] = [QPointF(*xy) for xy in points]
+        self.districtZone = get_districtZone()
+        self.zoneColor = {zn: pallet[i] for i, zn in enumerate(set(self.districtZone.values()))}
 
     def get_distName(self, x, y):
         p0 = Point(x, y)
@@ -239,33 +239,32 @@ class Singapore(object):
         else:
             return None
 
-    def drawPoly(self, qp, poly):
-        for i in range(len(poly) - 1):
-            x0, y0 = poly[i]
-            x1, y1 = poly[i + 1]
-            qp.drawLine(x0, y0, x1, y1)
-        x0, y0 = poly[len(poly) - 1]
-        x1, y1 = poly[0]
-        qp.drawLine(x0, y0, x1, y1)
-
     def draw(self, qp):
         pen = QPen(Qt.black, 0.2, Qt.DashLine)
         qp.setPen(pen)
-        for dist_name, poly in self.sgDistrictXY.items():
-            self.drawPoly(qp, poly)
+        for dn, points in self.sgDistrictXY.items():
+            qc = QColor(self.zoneColor[self.districtZone[dn]])
+            qc.setAlpha(ALPHA)
+            qp.setBrush(qc)
+            qp.drawPolygon(*points)
         pen = QPen(Qt.black, 1)
         qp.setPen(pen)
-        for _, poly in enumerate(self.sgBoarderXY):
-            self.drawPoly(qp, poly)
+        for _, points in enumerate(self.sgBoarderXY):
+            qp.drawPolyline(*points)
+            # self.drawPoly(qp, poly)
 
 
 def runSingle():
     from __path_organizer import exp_dpath
+    from functools import reduce
     #
-    fpaths = {
-        'agentF': opath.join(exp_dpath, 'agent-g0-na005-sn00.pkl'),
-        'taskF': opath.join(exp_dpath, 'task-g0-na005-sn00-nt003.pkl'),
-    }
+    pkl_dpath = reduce(opath.join, [exp_dpath, 'problem', 'pkl'])
+
+    # fpaths = {
+    #     'AGTK': opath.join(pkl_dpath, 'AGTK_g0-na010-nt020-sn00.pkl'),
+    # }
+
+    fpaths = {}
     #
     app = QApplication(sys.argv)
     viz = Viz(fpaths)
@@ -276,4 +275,3 @@ def runSingle():
 
 if __name__ == '__main__':
     runSingle()
-    # gen_imgs()

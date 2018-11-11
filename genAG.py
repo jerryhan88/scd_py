@@ -2,6 +2,7 @@ import os.path as opath
 import os
 import csv, pickle
 import numpy as np
+import pandas as pd
 from random import randrange, random, seed
 from datetime import datetime, timedelta
 from geopy.distance import vincenty
@@ -51,6 +52,7 @@ MODI_NAME = {'Harbour Front': 'HarbourFront',
 
 TIME_BUFFER = 30 * 60  # 30 min.
 MIN_DIST_TRAJ = 5  # km
+MAX_NUM_RR = 5  # the maximum number of routine routes
 SELECTION_PROB = 0.5
 
 RR_DPATH = opath.join(pf_dpath, 'RoutineRoutes')
@@ -75,6 +77,7 @@ class Node(object):
         for n0 in self.ancestors:
             if n1 in n0.descendants:
                 n0.remove_descendant(n1)
+
 
 def EZ2RR():
     dpath = opath.join(pf_dpath, 'RoutineRoutes')
@@ -215,6 +218,8 @@ def get_cid_instances(ifpath):
             cid_instances[cid].append(row)
     cidOrders = []
     for cid, rows in cid_instances.items():
+        if MAX_NUM_RR < len(rows):
+            continue
         cidOrders.append([int(rows[0]['numDates']), sum([eval(row['prob']) for row in rows]), cid])
     cidOrders.sort(reverse=True)
     return [l[2] for l in cidOrders], cid_instances
@@ -273,4 +278,4 @@ if __name__ == '__main__':
     #
     gNum, numAgents, seedNum = 0, 5, 0
     prefix = 'g%d-na%03d-sn%02d' % (gNum, numAgents, seedNum)
-    gen_agents(seedNum, prefix, gNum, numAgents, exp_dpath)
+    gen_agents(seedNum, prefix, gNum, numAgents, '_temp')

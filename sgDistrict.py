@@ -11,7 +11,18 @@ from shapely.geometry import Polygon
 from __path_organizer import ef_dpath, pf_dpath
 
 
-xConsiderDist = [   'North-Eastern Islands',
+zoneCentroid = {
+                        # (lat, lng)
+                'West': (1.332886, 103.742418),  # Jurong East MRT
+                'East': (1.324022, 103.930345),  # Bedok MRT
+                'CBD': (1.284179, 103.851627),  # Raffles Place MRT
+                'Center': (1.350894, 103.849901),  # Bishan MRT
+                'North': (1.429076, 103.835047)  # Yishun
+            }
+
+
+xConsiderDist = [
+                    'North-Eastern Islands',
                     'Tuas View Extension',
                     'Jurong Island And Bukom',
                     'Southern Group',
@@ -20,6 +31,34 @@ xConsiderDist = [   'North-Eastern Islands',
                     'Pulau Seletar',
                  ]
 
+def get_districtZone():
+    csv_fpath = opath.join(pf_dpath, 'DistrictZone.csv')
+    pkl_fpath = opath.join(pf_dpath, 'DistrictZone.pkl')
+    if not opath.exists(csv_fpath):
+        with open(csv_fpath, 'w') as w_csvfile:
+            writer = csv.writer(w_csvfile, lineterminator='\n')
+            new_headers = ['District', 'Zone']
+            writer.writerow(new_headers)
+        districtZone = {}
+        distPoly = get_distPoly()
+        for dn, poly in distPoly.items():
+            cLatLng = np.average(np.array([np.array([lat, lng]) for lat, lng in poly]), axis=0)
+            min_dist, cloest_zone = 1e400, None
+            for zn, _zLatLng in zoneCentroid.items():
+                dist = np.linalg.norm(cLatLng - np.array(_zLatLng))
+                if dist < min_dist:
+                    min_dist, cloest_zone = dist, zn
+            with open(csv_fpath, 'a') as w_csvfile:
+                writer = csv.writer(w_csvfile, lineterminator='\n')
+                writer.writerow([dn, cloest_zone])            
+            districtZone[dn] = cloest_zone
+        with open(pkl_fpath, 'wb') as fp:
+            pickle.dump(districtZone, fp)
+    else:
+        with open(pkl_fpath, 'rb') as fp:
+            districtZone = pickle.load(fp)
+    #
+    return districtZone
 
 def get_districtPopPoly():
     csv_fpath = opath.join(pf_dpath, 'DistrictsPopulation.csv')
@@ -198,4 +237,4 @@ def gen_distXCBDJSON():
 
 
 if __name__ == '__main__':
-    pass
+    get_zoneDistrict()
