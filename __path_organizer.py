@@ -1,9 +1,9 @@
 import os.path as opath
 import os
-import sys
 from functools import reduce
 
-data_dpath = reduce(opath.join, ['..', '_data', 'scd_py'])
+
+data_dpath = reduce(opath.join, [opath.expanduser("~"), 'Dropbox', '_researchData', 'scd'])
 mrtNet_dpath = opath.join(data_dpath, 'MRT_Network')
 ef_dpath = opath.join(data_dpath, 'ExternalFiles')
 pf_dpath = opath.join(data_dpath, 'ProcessedFiles')

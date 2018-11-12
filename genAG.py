@@ -246,6 +246,9 @@ def gen_agents(seedNum, prefix, gNum, numAgents, dpath=exp_dpath):
             for mvt in row['movements'].split('^'):
                 _seTime, traj = mvt.split('@')
                 sTime, eTime = [datetime.strptime(_time, '%H:%M:%S') for _time in _seTime.split('-')]
+                if eTime < sTime:
+                    valid = False
+                    break
                 traj = [np.array(tuple(map(eval, latlng.split('#')))) for latlng in traj.split('|')]
                 if vincenty(traj[0], traj[-1]).km < MIN_DIST_TRAJ:
                     valid = False

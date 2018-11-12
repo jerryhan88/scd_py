@@ -57,7 +57,7 @@ def run(prmt, etc=None):
     p_ae, l_ae, u_ae = map(prmt.get, ['p_ae', 'l_ae', 'u_ae'])
     S_ae, N_ae, c_aeij = map(prmt.get, ['S_ae', 'N_ae', 'c_aeij'])
     t_ij, al_i, be_i, ga_i, F_ae = map(prmt.get, ['t_ij', 'al_i', 'be_i', 'ga_i', 'F_ae'])
-    M = len(N) * max(t_ij.values())
+    M = len(N) * max(t_ij.values()) + max(ga_i.values())
     #
     ILP = Model('ILP')
     y_ak = {(a, k): ILP.addVar(vtype=GRB.BINARY, name='y[%d,%d]' % (a, k))
@@ -87,9 +87,9 @@ def run(prmt, etc=None):
                      name='TA[%d]' % k)
     for a in A:
         ILP.addConstr(quicksum(v_k[k] * y_ak[a, k] for k in K) <= v_a[a],
-                      name='V[%d]' % k)
+                      name='V[%d]' % a)
         ILP.addConstr(quicksum(w_k[k] * y_ak[a, k] for k in K) <= w_a[a],
-                      name='W[%d]' % k)
+                      name='W[%d]' % a)
         for e in E_a[a]:
             for k in K:
                 ILP.addConstr(z_aek[a, e, k] <= y_ak[a, k],
@@ -242,14 +242,14 @@ def run(prmt, etc=None):
 
 
 if __name__ == '__main__':
-    from problems import euclideanDistEx0
-    prmt = euclideanDistEx0()
+    # from problems import euclideanDistEx0
+    # prmt = euclideanDistEx0()
 
 
-    # import pickle
-    #
-    # with open(opath.join('_temp', 'prmt_g0-na005-nt003-sn00.pkl'), 'rb') as fp:
-    #     prmt = pickle.load(fp)
+    import pickle
+
+    with open(opath.join('_temp', 'prmt_na005-nt010-vc05-wc05-sn03.pkl'), 'rb') as fp:
+        prmt = pickle.load(fp)
 
 
     problemName = prmt['problemName']
