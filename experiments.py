@@ -23,23 +23,22 @@ def gen_instances():
     # gNum = randint(NUM_GROUP)
 
     numAgents, numTasks = 20, 500
-    numAgents = 40
-    # for seedNum in range(5):
-    seedNum = 4
-    gNum = seedNum % NUM_GROUP
-    # for numTasks in range(400, 1001, 100):
-    numTasks = 400
-    prefix = 'na%03d-nt%03d-vc%02d-wc%02d-sn%02d' % (numAgents, numTasks,
+    numAgents = 50
+    for seedNum in range(6, 10):
+        gNum = seedNum % NUM_GROUP
+        # for numTasks in range(10, 31, 10):
+        numTasks = 1000
+        prefix = 'na%03d-nt%03d-vc%02d-wc%02d-sn%02d' % (numAgents, numTasks,
                                                      DEFAULT_VOLUME_CAPACITY, DEFAULT_WEIGHT_CAPACITY, seedNum)
-    agents = gen_agents(seedNum, prefix, gNum, numAgents, dpath=csv_dpath)
-    tasks = gen_tasks(seedNum, prefix, numTasks, agents, dpath=csv_dpath)
-    prmt = gen_prmt_AGTK(agents, tasks, prefix, dpath=pkl_dpath)
-    prmt_pkl2json(prmt, dpath=json_dpath)
+        agents = gen_agents(seedNum, prefix, gNum, numAgents, dpath=csv_dpath)
+        tasks = gen_tasks(seedNum, prefix, numTasks, agents, dpath=csv_dpath)
+        prmt = gen_prmt_AGTK(agents, tasks, prefix, dpath=pkl_dpath)
+        prmt_pkl2json(prmt, dpath=json_dpath)
 
 
 def summary():
     summary_fpath = opath.join(exp_dpath, 'summary.csv')
-    appNames = ['ILP', 'SDA', 'SDAbnb']
+    appNames = ['ILP', 'SDA', 'SDAbnb', 'SDAgh']
     with open(summary_fpath, 'w') as w_csvfile:
         writer = csv.writer(w_csvfile, lineterminator='\n')
         header = ['pf', '#A', '#T', 'vc', 'wc', 'sn']

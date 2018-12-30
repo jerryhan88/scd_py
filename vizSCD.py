@@ -1,6 +1,7 @@
 import os.path as opath
 import os, sys
 import csv, pickle
+from bisect import bisect
 from itertools import chain
 from shapely.geometry import Polygon, Point
 #
@@ -9,11 +10,12 @@ from PyQt5.QtGui import (QPainter, QFont, QPen, QColor, QKeySequence, QTextDocum
                          QImage, QPalette)
 from PyQt5.QtCore import Qt, QSize, QRectF, QSizeF, QPointF
 #
-from sgDistrict import get_sgBorder, get_distPoly, get_districtZone
+from sgDistrict import get_sgBorder, get_distPoly, get_districtZone, get_sgGrid, get_validGrid
 from colour import Color
 
-ALPHA = 100
-
+ALPHA1 = 10
+ALPHA2 = 150
+ALPHA_TRANSPARENT = 0
 
 pallet = [
     Color('blue').get_hex_l(),
@@ -29,6 +31,10 @@ pallet = [
     Color('pink').get_hex_l(),
     Color('grey').get_hex_l(),
 ]
+
+# HEATMAP_COLORS = list(Color("white").range_to(Color("magenta"), 20))
+
+HEATMAP_COLORS = list(Color("#CECCF8").range_to(Color("#9B0635"), 20))
 
 lineStyle = [Qt.SolidLine, Qt.DotLine, Qt.DashLine,
              Qt.DashDotLine, Qt.DashDotDotLine, Qt.CustomDashLine]
@@ -56,6 +62,7 @@ HEIGHT = lat_gap * (WIDTH / lng_gap)
 
 FRAME_ORIGIN = (60, 100)
 LocPD_dotSize = 5
+SHOW_AGENT = False
 
 
 def convert_GPS2xy(lng, lat):
@@ -140,23 +147,44 @@ class Viz(QWidget):
         self.sg = Singapore(sgBoarderXY, sgDistrictXY)
         self.objForDrawing = [self.sg]
         #
+        self.gzs = {}
+        lats, lngs = get_sgGrid()
+        for i, j in get_validGrid():
+            lng0, lng1 = lngs[i], lngs[i + 1]
+            lat0, lat1 = lats[j], lats[j + 1]
+            cLng, cLat = (lng0 + lng1) / 2.0, (lat0 + lat1) / 2.0
+            #
+            zid = '(%d,%d)' % (i, j)
+            cp = QPointF(*convert_GPS2xy(cLng, cLat))
+            rect = QRectF(QPointF(*convert_GPS2xy(lng0, lat1)),
+                          QPointF(*convert_GPS2xy(lng1, lat0)))
+            gz = GridZone(zid, cp, rect)
+            self.gzs[i, j] = gz
+            self.objForDrawing.append(gz)
+
         if self.fpaths:
             with open(self.fpaths['AGTK'], 'rb') as fp:
                 agents, tasks = pickle.load(fp)
-            for agt in agents:
-                RRs = []
-                for aRR in agt['RRs']:
-                    trajXY = []
-                    for mvt in aRR['mvts']:
-                        trajXY.append([convert_GPS2xy(lng, lat) for lat, lng in mvt['traj']])
-                    RRs.append([aRR['prob'], trajXY])
-                self.objForDrawing.append(Agent(agt['aid'], agt['cid'], RRs))
-            for tk in tasks:
-                pcx, pcy = convert_GPS2xy(tk['LngP'], tk['LatP'])
-                dcx, dcy = convert_GPS2xy(tk['LngD'], tk['LatD'])
-                self.objForDrawing.append(Task(tk['tid'],
-                                               [pcx, pcy], [dcx, dcy]))
 
+            for tk in tasks:
+                zi, zj = bisect(lngs, tk['LngD']) - 1, bisect(lats, tk['LatD']) - 1
+                z = self.gzs[zi, zj]
+                z.increaseCounter()
+
+            if SHOW_AGENT:
+                for agt in agents:
+                    RRs = []
+                    for aRR in agt['RRs']:
+                        trajXY = []
+                        for mvt in aRR['mvts']:
+                            trajXY.append([convert_GPS2xy(lng, lat) for lat, lng in mvt['traj']])
+                        RRs.append([aRR['prob'], trajXY])
+                    self.objForDrawing.append(Agent(agt['aid'], agt['cid'], RRs))
+                for tk in tasks:
+                    pcx, pcy = convert_GPS2xy(tk['LngP'], tk['LatP'])
+                    dcx, dcy = convert_GPS2xy(tk['LngD'], tk['LatD'])
+                    self.objForDrawing.append(Task(tk['tid'],
+                                                   [pcx, pcy], [dcx, dcy]))
 
     def mousePressEvent(self, QMouseEvent):
         if self.mousePressed:
@@ -176,6 +204,47 @@ class Viz(QWidget):
                 self.px, self.py = x - self.labelW / 2, y - Viz.labelH
                 print(dist_name)
                 self.update()
+
+
+class GridZone(object):
+    MAX_COUNTER = 0
+
+    def __init__(self, zid, cp, rect):
+        self.zid, self.cp, self.rect = zid, cp, rect
+        self.counter = 0
+
+    def increaseCounter(self):
+        self.counter += 1
+        if GridZone.MAX_COUNTER < self.counter:
+            GridZone.MAX_COUNTER = self.counter
+
+    def draw(self, qp):
+        if self.counter == 0:
+            pen = QPen(Qt.black, 0.5, Qt.SolidLine)
+            qp.setPen(pen)
+            qc = QColor('white')
+            qc.setAlpha(ALPHA_TRANSPARENT)
+        else:
+            ratio = float(self.counter / GridZone.MAX_COUNTER)
+            cIndex = int(len(HEATMAP_COLORS) * ratio)
+            if cIndex == 0:
+                pen_color = Qt.black
+                qc = QColor('white')
+                qc.setAlpha(ALPHA_TRANSPARENT)
+            else:
+                pen_color = QColor(HEATMAP_COLORS[int(len(HEATMAP_COLORS) * ratio) - 1].get_hex_l())
+                qc = QColor(pen_color)
+                qc.setAlpha(ALPHA2)
+            pen = QPen(pen_color, 0.5, Qt.SolidLine)
+            qp.setPen(pen)
+        qp.setBrush(qc)
+        qp.drawRect(self.rect)
+        #
+        if self.counter != 0:
+            pen = QPen(Qt.black, 0.5, Qt.SolidLine)
+            qp.setPen(pen)
+            qp.drawText(self.cp, '%d' % self.counter)
+
 
 
 class Task(object):
@@ -223,6 +292,7 @@ class Agent(object):
 class Singapore(object):
     def __init__(self, sgBoarderXY, sgDistrictXY):
         self.sgBoarderXY = [[QPointF(*xy) for xy in points] for points in sgBoarderXY]
+        self.sgPolys = [Polygon(points) for points in sgBoarderXY]
         self.sgDistrictXY = sgDistrictXY
         self.sgDistrictPolyXY = {}
         for dn, points in self.sgDistrictXY.items():
@@ -244,7 +314,7 @@ class Singapore(object):
         qp.setPen(pen)
         for dn, points in self.sgDistrictXY.items():
             qc = QColor(self.zoneColor[self.districtZone[dn]])
-            qc.setAlpha(ALPHA)
+            qc.setAlpha(ALPHA1)
             qp.setBrush(qc)
             qp.drawPolygon(*points)
         pen = QPen(Qt.black, 1)
@@ -259,12 +329,16 @@ def runSingle():
     from functools import reduce
     #
     pkl_dpath = reduce(opath.join, [exp_dpath, 'problem', 'pkl'])
+    # pkl_fpath = opath.join(pkl_dpath, 'AGTK_na005-nt010-vc10-wc10-sn00.pkl')
+    pkl_fpath = opath.join(pkl_dpath, 'AGTK_na050-nt500-vc10-wc10-sn00.pkl')
 
-    # fpaths = {
-    #     'AGTK': opath.join(pkl_dpath, 'AGTK_g0-na010-nt020-sn00.pkl'),
-    # }
+    fpaths = {
+        'AGTK': pkl_fpath,
+    }
 
-    fpaths = {}
+
+
+    # fpaths = {}
     #
     app = QApplication(sys.argv)
     viz = Viz(fpaths)

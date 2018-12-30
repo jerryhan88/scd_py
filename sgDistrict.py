@@ -1,15 +1,18 @@
 import os.path as opath
 import pickle, csv
 import json
+import multiprocessing as mp
 import numpy as np
+from itertools import chain
 from xlrd import open_workbook
 from pykml import parser
 from shapely.ops import cascaded_union
-from shapely.geometry import Polygon
-
+from shapely.geometry import Polygon, Point
+from geopy.distance import VincentyDistance
 #
 from __path_organizer import ef_dpath, pf_dpath
 
+NUM_PROCESSORS = mp.cpu_count()
 
 zoneCentroid = {
                         # (lat, lng)
@@ -30,6 +33,9 @@ xConsiderDist = [
                     'Sudong',
                     'Pulau Seletar',
                  ]
+
+NORTH, EAST, SOUTH, WEST = 0, 90, 180, 270
+ZONE_UNIT_KM = 0.5
 
 def get_districtZone():
     csv_fpath = opath.join(pf_dpath, 'DistrictZone.csv')
@@ -118,7 +124,6 @@ def get_districtPopPoly():
     #
     return distPop, distPoly
 
-
 def get_distPop():
     pop_fpath = opath.join(pf_dpath, 'DistrictsPopulation.pkl')
     if not opath.exists(pop_fpath):
@@ -127,7 +132,6 @@ def get_distPop():
         distPop = pickle.load(fp)
     return distPop
 
-
 def get_distPoly():
     poly_fpath = opath.join(pf_dpath, 'DistrictsPolygon.pkl')
     if not opath.exists(poly_fpath):
@@ -135,7 +139,6 @@ def get_distPoly():
     with open(poly_fpath, 'rb') as fp:
         distPoly = pickle.load(fp)
     return distPoly
-
 
 def get_sgBorder():
     sgBorder_fpath = opath.join(pf_dpath, 'sgBorderPolygon.pkl')
@@ -150,6 +153,98 @@ def get_sgBorder():
             sgBorder = pickle.load(fp)
     #
     return sgBorder
+
+def get_sgGrid():
+    sgGrid_fpath = opath.join(pf_dpath, 'sgGrid(%.1fkm).pkl'% ZONE_UNIT_KM)
+    if opath.exists(sgGrid_fpath):
+        with open(sgGrid_fpath, 'rb') as fp:
+            lats, lngs = pickle.load(fp)
+        return lats, lngs
+    #
+    sgBorder = get_sgBorder()
+    min_lng, max_lng = 1e400, -1e400
+    min_lat, max_lat = 1e400, -1e400
+    for poly in sgBorder:
+        for lat, lng in poly:
+            if lng < min_lng:
+                min_lng = lng
+            if lng > max_lng:
+                max_lng = lng
+            if lat < min_lat:
+                min_lat = lat
+            if lat > max_lat:
+                max_lat = lat
+    #
+    mover = VincentyDistance(kilometers=ZONE_UNIT_KM)
+    #
+    lats, lngs = [], []
+    lat = min_lat
+    while lat < max_lat:
+        lats += [lat]
+        p0 = [lat, min_lng]
+        moved_point = mover.destination(point=p0, bearing=NORTH)
+        lat = moved_point.latitude
+    lats += [lat]
+    lon = min_lng
+    while lon < max_lng:
+        lngs += [lon]
+        p0 = [min_lat, lon]
+        moved_point = mover.destination(point=p0, bearing=EAST)
+        lon = moved_point.longitude
+    lngs += [lon]
+    #
+    with open(sgGrid_fpath, 'wb') as fp:
+        pickle.dump([lats, lngs], fp)
+    return lats, lngs
+
+
+def get_validGrid():
+    sgValidGrid_fpath = opath.join(pf_dpath, 'sgValidGrid(%.1fkm).pkl' % ZONE_UNIT_KM)
+    if opath.exists(sgValidGrid_fpath):
+        with open(sgValidGrid_fpath, 'rb') as fp:
+            validGrid = pickle.load(fp)
+        return validGrid
+    #
+    def grid_filtering(ij_points, sgPolys, wid, wDict):
+        valid_gridZone = []
+        for ij, points in ij_points:
+            isin = False
+            for p in points:
+                for poly in sgPolys:
+                    if p.within(poly):
+                        isin = True
+                        break
+                if isin:
+                    valid_gridZone.append(ij)
+                    break
+        wDict[wid] = valid_gridZone
+    #
+    sgBorder = get_sgBorder()
+    sgPolys = [Polygon(points) for points in sgBorder]
+    lats, lngs = get_sgGrid()
+    worker_ij_points = [[] for _ in range(NUM_PROCESSORS)]
+    for i in range(len(lngs) - 1):
+        lng0, lng1 = lngs[i], lngs[i + 1]
+        for j in range(len(lats) - 1):
+            lat0, lat1 = lats[j], lats[j + 1]
+            points = [Point(lat0, lng0),
+                      Point(lat0, lng1),
+                      Point(lat1, lng0),
+                      Point(lat1, lng1)]
+            worker_ij_points[(i + j) % NUM_PROCESSORS].append([(i, j), points])
+    ps = []
+    wDict = mp.Manager().dict()
+    for wid, ij_cp in enumerate(worker_ij_points):
+        p = mp.Process(target=grid_filtering, args=(ij_cp, sgPolys, wid, wDict))
+        ps.append(p)
+        p.start()
+    for p in ps:
+        p.join()
+    #
+    validGrid = list(chain(*wDict.values()))
+    with open(sgValidGrid_fpath, 'wb') as fp:
+        pickle.dump(validGrid, fp)
+    return validGrid
 
 
 def get_distCBD():
@@ -237,4 +332,5 @@ def gen_distXCBDJSON():
 
 
 if __name__ == '__main__':
-    get_zoneDistrict()
+    # get_sgGrid()
+    print(get_validGrid())

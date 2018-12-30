@@ -340,10 +340,10 @@ def convert_prob2prmt(problemName,
     #
     for a in A:
         for e in E_a[a]:
-            krS = S_ae[a, e]
+            aeS = S_ae[a, e]
             F_ae[a, e] = []
             for k in K:
-                min_tt, best_seq = insert_task(krS, k, h_k, al_i, be_i, ga_i, t_ij)
+                min_tt, best_seq = insert_task(aeS, k, h_k, al_i, be_i, ga_i, t_ij)
                 if min_tt - l_ae[a, e] <= u_ae[a, e]:
                     F_ae[a, e].append(k)
     #
