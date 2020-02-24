@@ -7,7 +7,7 @@ from functools import reduce
 from __path_organizer import exp_dpath
 from genAG import gen_agents, NUM_GROUP
 from genTK import gen_tasks
-from problems import gen_prmt_AGTK, prmt_pkl2json, DEFAULT_VOLUME_CAPACITY, DEFAULT_WEIGHT_CAPACITY
+from problems import gen_prmt_AGTK, prob_pkl2json, DEFAULT_VOLUME_CAPACITY, DEFAULT_WEIGHT_CAPACITY
 
 
 def gen_instances():
@@ -33,7 +33,7 @@ def gen_instances():
         agents = gen_agents(seedNum, prefix, gNum, numAgents, dpath=csv_dpath)
         tasks = gen_tasks(seedNum, prefix, numTasks, agents, dpath=csv_dpath)
         prmt = gen_prmt_AGTK(agents, tasks, prefix, dpath=pkl_dpath)
-        prmt_pkl2json(prmt, dpath=json_dpath)
+        prob_pkl2json(prmt, dpath=json_dpath)
 
 
 def summary():
