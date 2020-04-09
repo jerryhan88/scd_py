@@ -3,7 +3,7 @@ import os
 from functools import reduce
 
 
-data_dpath = reduce(opath.join, [opath.expanduser("~"), 'Dropbox', '_researchData', 'scd'])
+data_dpath = reduce(opath.join, [opath.expanduser("~"), 'Dropbox', '_researchData', 'scd_cpp'])
 mrtNet_dpath = opath.join(data_dpath, 'MRT_Network')
 ef_dpath = opath.join(data_dpath, 'ExternalFiles')
 pf_dpath = opath.join(data_dpath, 'ProcessedFiles')

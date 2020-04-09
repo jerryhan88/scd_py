@@ -1,0 +1,8 @@
+*.log
+*.json
+*.pkl
+*.csv
+*.txt
+*.png
+*ilp
+*lp

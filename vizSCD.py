@@ -332,13 +332,13 @@ def runSingle():
     # pkl_fpath = opath.join(pkl_dpath, 'AGTK_na005-nt010-vc10-wc10-sn00.pkl')
     pkl_fpath = opath.join(pkl_dpath, 'AGTK_na050-nt500-vc10-wc10-sn00.pkl')
 
-    fpaths = {
-        'AGTK': pkl_fpath,
-    }
+    # fpaths = {
+    #     'AGTK': pkl_fpath,
+    # }
 
 
 
-    # fpaths = {}
+    fpaths = {}
     #
     app = QApplication(sys.argv)
     viz = Viz(fpaths)

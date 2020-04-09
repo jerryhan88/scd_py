@@ -5,11 +5,15 @@ import numpy as np
 import pandas as pd
 from random import randrange, random, seed
 from datetime import datetime, timedelta
-from geopy.distance import vincenty
+from geopy.distance import geodesic
+from shapely.geometry import Point
+from shapely.geometry.multipolygon import MultiPolygon
+from shapely.geometry.polygon import Polygon
 #
 from __path_organizer import pf_dpath, exp_dpath
 from sgMRT import get_coordMRT
 from sgBus import get_coordBS
+from sgGeo import get_planningAreas
 
 NUM_GROUP = 10
 MISSING_BS = {
@@ -201,12 +205,6 @@ def EZ2RR():
     handle_movements(nodes, agent_wid)
 
 
-def init_csv(csv_fpath):
-    with open(csv_fpath, 'w') as w_csvfile:
-        writer = csv.writer(w_csvfile, lineterminator='\n')
-        writer.writerow(['cid', 'aid', 'rrid', 'prob', 'sTime', 'eTime', 'movement'])
-
-
 def get_cid_instances(ifpath):
     cid_instances = {}
     with open(ifpath) as r_csvfile:
@@ -225,12 +223,24 @@ def get_cid_instances(ifpath):
     return [l[2] for l in cidOrders], cid_instances
 
 
-def gen_agents(seedNum, prefix, gNum, numAgents, dpath=exp_dpath):
+def gen_agents(seedNum, prefix, gNum, numAgents, max_rp_limit=4, dpath=exp_dpath):
+    pkl_fpath = opath.join(dpath, 'AG_%s.pkl' % prefix)
+    if opath.exists(pkl_fpath):
+        with open(pkl_fpath, 'rb') as fp:
+            agents = pickle.load(fp)
+        return agents
+    #
     seed(seedNum)
     csv_fpath = opath.join(dpath, 'AG_%s.csv' % prefix)
-    init_csv(csv_fpath)
+    with open(csv_fpath, 'w') as w_csvfile:
+        writer = csv.writer(w_csvfile, lineterminator='\n')
+        writer.writerow(['cid', 'aid', 'rrid', 'prob',
+                         'sTime', 'eTime', 'sPlanningArea', 'ePlanningArea',
+                         'movement'])
+    #
     rr_fpath = opath.join(RR_DPATH, 'RoutineRoutes-g%d.csv' % gNum)
     cids, cid_instances = get_cid_instances(rr_fpath)
+    planningAreas = get_planningAreas()
     #
     agents = []
     for cid in cids:
@@ -240,8 +250,8 @@ def gen_agents(seedNum, prefix, gNum, numAgents, dpath=exp_dpath):
                'cid': cid,
                'RRs': []}
         valid = True
-        new_rows = []
-        for j, row in enumerate(cid_instances[cid]):
+        max_rp = -1
+        for row in cid_instances[cid]:
             mvts = []
             for mvt in row['movements'].split('^'):
                 _seTime, traj = mvt.split('@')
@@ -250,22 +260,55 @@ def gen_agents(seedNum, prefix, gNum, numAgents, dpath=exp_dpath):
                     valid = False
                     break
                 traj = [np.array(tuple(map(eval, latlng.split('#')))) for latlng in traj.split('|')]
-                if vincenty(traj[0], traj[-1]).km < MIN_DIST_TRAJ:
+                if geodesic(traj[0], traj[-1]).km < MIN_DIST_TRAJ:
                     valid = False
                     break
-                new_rows.append([cid, len(agents), j, row['prob'],
-                                 sTime.strftime('%H:%M:%S'), eTime.strftime('%H:%M:%S'),
-                                 traj])
                 #
                 mvts.append({'sTime': sTime, 'eTime': eTime,
                              'traj': traj})
             if not valid:
                 break
+            if max_rp < len(mvts):
+                max_rp = len(mvts)
             agt['RRs'].append({'prob': eval(row['prob']),
                                'mvts': mvts})
         if not valid:
             continue
+        if max_rp < max_rp_limit:
+            continue
         #
+        new_rows = []
+        for j, rr in enumerate(agt['RRs']):            
+            for mvt in rr['mvts']:
+                lat0, lng0 = mvt['traj'][0]
+                lat1, lng1 = mvt['traj'][-1]
+                sPoint, ePoint = Point(lng0, lat0), Point(lng1, lat1)
+                sPlanningArea, ePlanningArea = None, None
+                for pa in planningAreas:
+                    if type(pa['geometry']) == Polygon:
+                        if sPlanningArea is None:
+                            if sPoint.within(pa['geometry']):
+                                sPlanningArea = pa['name']
+                        if ePlanningArea is None:
+                            if ePoint.within(pa['geometry']):
+                                ePlanningArea = pa['name']        
+                    else:
+                        assert type(pa['geometry']) == MultiPolygon
+                        for poly in pa['geometry']:
+                            if sPlanningArea is None:
+                                if sPoint.within(poly):
+                                    sPlanningArea = pa['name']
+                            if ePlanningArea is None:
+                                if ePoint.within(poly):
+                                    ePlanningArea = pa['name']                                    
+                    if sPlanningArea is not None and ePlanningArea is not None:
+                        break
+                mvt['sPlanningArea'] = sPlanningArea
+                mvt['ePlanningArea'] = ePlanningArea
+                new_rows.append([cid, len(agents), j, rr['prob'],
+                                 mvt['sTime'].strftime('%H:%M:%S'), mvt['eTime'].strftime('%H:%M:%S'),
+                                 sPlanningArea, ePlanningArea,
+                                 traj])     
         agents.append(agt)
         with open(csv_fpath, 'a') as w_csvfile:
             writer = csv.writer(w_csvfile, lineterminator='\n')
@@ -274,6 +317,8 @@ def gen_agents(seedNum, prefix, gNum, numAgents, dpath=exp_dpath):
         if len(agents) == numAgents:
             break
     #
+    with open(pkl_fpath, 'wb') as fp:
+        pickle.dump(agents, fp)
     return agents
 
 if __name__ == '__main__':
@@ -281,4 +326,4 @@ if __name__ == '__main__':
     #
     gNum, numAgents, seedNum = 0, 5, 0
     prefix = 'g%d-na%03d-sn%02d' % (gNum, numAgents, seedNum)
-    gen_agents(seedNum, prefix, gNum, numAgents, '_temp')
+    gen_agents(seedNum, prefix, gNum, numAgents, max_rp_limit=4, dpath='_temp')

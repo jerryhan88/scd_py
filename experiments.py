@@ -1,4 +1,5 @@
 import os.path as opath
+import multiprocessing
 import os
 import csv
 import pandas as pd
@@ -8,32 +9,56 @@ from __path_organizer import exp_dpath
 from genAG import gen_agents, NUM_GROUP
 from genTK import gen_tasks
 from problems import gen_prmt_AGTK, prob_pkl2json, DEFAULT_VOLUME_CAPACITY, DEFAULT_WEIGHT_CAPACITY
+from genPI import gen_problemInstance
+
+
+problem_dpath = opath.join(exp_dpath, 'problem_temp')
+csv_dpath = opath.join(problem_dpath, 'csv')
+json_dpath = opath.join(problem_dpath, 'json')
+for dpath in [problem_dpath, csv_dpath, json_dpath]:
+    if not opath.exists(dpath):
+        os.mkdir(dpath)
 
 
 def gen_instances():
-    problem_dpath = opath.join(exp_dpath, '_problem')
-    csv_dpath = opath.join(problem_dpath, 'csv')
-    pkl_dpath = opath.join(problem_dpath, 'pkl')
-    json_dpath = opath.join(problem_dpath, 'json')
-    for dpath in [problem_dpath, csv_dpath, pkl_dpath, json_dpath]:
-        if not opath.exists(dpath):
-            os.mkdir(dpath)
-    #
-    seedNum = 0
-    # gNum = randint(NUM_GROUP)
+    numProcessors = multiprocessing.cpu_count() - 2
+    # numProcessors = 1
+    worker_arguments = [[] for _ in range(numProcessors)]
 
-    numAgents, numTasks = 20, 500
-    numAgents = 50
-    for seedNum in range(6, 10):
+    for seedNum in range(20):
+        worker_arguments[seedNum % numProcessors].append(seedNum)
+    ps = []
+    for wid, seedNums in enumerate(worker_arguments):
+        p = multiprocessing.Process(target=get_a_instance_givenSeedNums,
+                                    args=(wid, seedNums))
+        ps.append(p)
+        p.start()
+    for p in ps:
+        p.join()
+
+
+def get_a_instance_givenSeedNums(wid, seedNums):
+    capacity = 5
+    numAgents = 10
+    for seedNum in seedNums:
         gNum = seedNum % NUM_GROUP
-        # for numTasks in range(10, 31, 10):
-        numTasks = 1000
-        prefix = 'na%03d-nt%03d-vc%02d-wc%02d-sn%02d' % (numAgents, numTasks,
-                                                     DEFAULT_VOLUME_CAPACITY, DEFAULT_WEIGHT_CAPACITY, seedNum)
+        prefix = 'na%03d-sn%02d' % (numAgents, seedNum)
+        agents = gen_agents(seedNum, prefix, gNum, numAgents, dpath=csv_dpath)
+        for numTasks in range(20, 101, 20):
+            prefix = 'na%03d-nt%03d-ca%03d-sn%02d' % (numAgents, numTasks, capacity, seedNum)
+            tasks = gen_tasks(seedNum, prefix, numTasks, agents, dpath=csv_dpath)
+            prob = gen_problemInstance(prefix, agents, tasks,
+                                       tb_ratio=1.05, volume_capacity=capacity, weight_capacity=capacity)
+            prob_pkl2json(prob, dpath=json_dpath)
+
+
+def gen_a_instance(wid, arguments):
+    for numAgents, numTasks, seedNum, gNum, csv_dpath, pkl_dpath, json_dpath in arguments:
+        prefix = 'na%03d-nt%03d-ca%03d-sn%02d' % (numAgents, numTasks, DEFAULT_VOLUME_CAPACITY, seedNum)
         agents = gen_agents(seedNum, prefix, gNum, numAgents, dpath=csv_dpath)
         tasks = gen_tasks(seedNum, prefix, numTasks, agents, dpath=csv_dpath)
-        prmt = gen_prmt_AGTK(agents, tasks, prefix, dpath=pkl_dpath)
-        prob_pkl2json(prmt, dpath=json_dpath)
+        prob = gen_problemInstance(prefix, agents, tasks, tb_ratio=1.05)
+        prob_pkl2json(prob, dpath=json_dpath)
 
 
 def summary():

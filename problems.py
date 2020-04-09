@@ -3,8 +3,8 @@ import os
 import csv, pickle
 import json
 import numpy as np
-from geopy.distance import vincenty
-from random import random
+from geopy.distance import geodesic
+from random import random, uniform
 #
 from __path_organizer import exp_dpath
 
@@ -26,7 +26,7 @@ DEFAULT_STAYING_TIME = 30.0 / MIN60  # 30 min. (the unit is hour)
 ZERO_DURATION = 0.0
 ARRIVAL_TIME_SPREAD = 30.0 / MIN60  # 30 min. (the unit is hour)
 
-
+EPSILON = 1e-6
 
 convert_t2h = lambda dt: dt.hour + dt.minute / MIN60 + dt.second / (MIN60 * SEC60)
 
@@ -137,7 +137,7 @@ def get_prob(_warehouses, _tasks, _agents, prefix, dpath, isEuDist=True):
             if isEuDist:
                 travel_time[locID0, locID1] = np.linalg.norm(loc0XY - loc1XY)
             else:
-                travel_time[locID0, locID1] = vincenty(loc0XY, loc1XY).km / CAR_SPEED
+                travel_time[locID0, locID1] = geodesic(loc0XY, loc1XY).km / CAR_SPEED
     #
     with open(opath.join(dpath, 'WTA_%s.pkl' % prefix), 'wb') as fp:
         pickle.dump([_warehouses, _tasks, _agents], fp)
@@ -146,10 +146,12 @@ def get_prob(_warehouses, _tasks, _agents, prefix, dpath, isEuDist=True):
     mn = convert_prob2mn(*problem)
     with open(opath.join(dpath, 'prob_%s.pkl' % prefix), 'wb') as fp:
         pickle.dump(mn, fp)
-    #
-    with open(opath.join(dpath, 'prob_%s.json' % mn['problemName']), 'w') as outfile:
-        outfile.write(json.dumps(mn))
     return mn
+
+
+def prob_pkl2json(prob, dpath='_temp'):
+    with open(opath.join(dpath, 'prob_%s.json' % prob['problemName']), 'w') as outfile:
+        outfile.write(json.dumps(prob))
 
 
 def convert_prob2mn(problemName,
@@ -233,7 +235,7 @@ def convert_prob2mn(problemName,
     c_aeij = [
                 [
                     [
-                        [None for _ in range(numNodes)]
+                        [0 for _ in range(numNodes)]
                         for _ in range(numNodes)]
                     for _ in range(len(E_a[a]))]
                 for a in range(numAgents)
@@ -266,10 +268,10 @@ def convert_prob2mn(problemName,
             d_ae[a][e] = R_ae[a][e][-1]
             for i0 in range(len(R_ae[a][e])):
                 nLocID0 = R_ae[a][e][i0]
-                if i0 != len(R_ae[a][e]) - 1:
-                    oLocID0 = nLocID_oLocID[R_ae[a][e][i0]]
-                    oLocID1 = nLocID_oLocID[R_ae[a][e][i0 + 1]]
-                    u_ae[a][e] += travel_time[oLocID0, oLocID1]
+                # if i0 != len(R_ae[a][e]) - 1:
+                #     oLocID0 = nLocID_oLocID[R_ae[a][e][i0]]
+                #     oLocID1 = nLocID_oLocID[R_ae[a][e][i0 + 1]]
+                #     u_ae[a][e] += travel_time[oLocID0, oLocID1] + rr['locST'][i0]
                 for i1 in range(i0, len(R_ae[a][e])):
                     nLocID1 = R_ae[a][e][i1]
                     c_aeij[a][e][nLocID0][nLocID1] = 1
@@ -346,7 +348,7 @@ def convert_prob2mn(problemName,
             'oLocID_nLocID': oLocID_nLocID}
 
 
-def gen_prmt_AGTK(_agents, _tasks, prefix, dpath=exp_dpath, tb_ratio=0.3):
+def gen_prmt_AGTK(_agents, _tasks, prefix, dpath=exp_dpath, tb_ratio=1.3):
     with open(opath.join(dpath, 'AGTK_%s.pkl' % prefix), 'wb') as fp:
         pickle.dump([_agents, _tasks], fp)
     #
@@ -361,7 +363,10 @@ def gen_prmt_AGTK(_agents, _tasks, prefix, dpath=exp_dpath, tb_ratio=0.3):
                                'locTW': DEFAULT_TW,
                                'locST': DEFAULT_SERVICE_TIME})
         wid = warehouses_wid[locW]
-        tasks.append({'reward': DEFAULT_REWARD, 'volume': DEFAULT_VOLUME, 'weight': DEFAULT_WEIGHT,
+        v = uniform(EPSILON, DEFAULT_VOLUME)
+        w = uniform(EPSILON, DEFAULT_WEIGHT)
+        r = max(v, w)
+        tasks.append({'reward': r, 'volume': v, 'weight': w,
                       'wid': wid,
                       'locXY': np.array([LatD, LngD]),
                       'locTW': TW_NOON_BEFORE if random() > 0.5 else TW_NOON_AFTER,
@@ -378,6 +383,7 @@ def gen_prmt_AGTK(_agents, _tasks, prefix, dpath=exp_dpath, tb_ratio=0.3):
             l_alight = convert_t2h(last_mvt['eTime'])
             #
             distSum = 0.0
+
             locXY = [o_kr]
             locTW = [np.array([f_embark_time - ARRIVAL_TIME_SPREAD,
                                f_embark_time + ARRIVAL_TIME_SPREAD])]
@@ -386,18 +392,19 @@ def gen_prmt_AGTK(_agents, _tasks, prefix, dpath=exp_dpath, tb_ratio=0.3):
                 p_mvts, n_mvts = mvts[i], mvts[i + 1]
                 p_et, n_st, n_et = map(convert_t2h, [p_mvts['eTime'], n_mvts['sTime'], n_mvts['eTime']])
                 meanP = np.mean([p_mvts['traj'][-1], n_mvts['traj'][0]], axis=0)
-                distSum += vincenty(locXY[-1] if i != 0 else o_kr, meanP).km
+                distSum += geodesic(locXY[-1] if i != 0 else o_kr, meanP).km
                 locXY.append(meanP)
                 locTW.append(np.array([p_et - ARRIVAL_TIME_SPREAD,
                                        p_et + ARRIVAL_TIME_SPREAD]))
                 locST.append(n_st - p_et)
-            distSum += vincenty(locXY[-1], d_kr).km
+            distSum += geodesic(locXY[-1], d_kr).km
+            ST_sum = sum(locST)
             locXY.append(d_kr)
             locTW.append(np.array([l_alight - ARRIVAL_TIME_SPREAD,
                                    l_alight + ARRIVAL_TIME_SPREAD]))
             locST.append(ZERO_DURATION)
             RRs.append({'prob': aRR['prob'] / probSum,
-                        'TB': (distSum / CAR_SPEED) * tb_ratio,
+                        'TB': (distSum / CAR_SPEED + ST_sum) * tb_ratio,
                         'locXY': locXY,
                         'locTW': locTW,
                         'locST': locST},)
@@ -408,18 +415,18 @@ def gen_prmt_AGTK(_agents, _tasks, prefix, dpath=exp_dpath, tb_ratio=0.3):
 
 
 if __name__ == '__main__':
-   euclideanDistEx0()
-#     gNum, numAgents, seedNum = 0, 5, 0
-#     numTasks = 3
-#     prefix = 'g%d-na%03d-sn%02d' % (gNum, numAgents, seedNum)
-#     with open(opath.join('_temp', '%s.pkl' % prefix), 'rb') as fp:
-#         agents, tasks = pickle.load(fp)
-#     gen_prmt_AGTK(agents, tasks, prefix, dpath='_temp', tb_ratio=0.3)
-
-    #
-    # agt_fpath = opath.join(exp_dpath, 'agent-g0-na005-sn00.pkl')
-    # tk_fpath = opath.join(exp_dpath, 'task-g0-na005-sn00-nt003.pkl')
-    # prmt = gen_prmt_AGTK(agt_fpath, tk_fpath)
-    # prmt_pkl2json(prmt, dpath=exp_dpath)
+    # prob = euclideanDistEx0()
+    # prob_pkl2json(prob)
 
 
+    from genAG import gen_agents, NUM_GROUP
+    from genTK import gen_tasks
+
+    numAgents, numTasks, seedNum = 5, 10, 2
+    gNum = seedNum % NUM_GROUP
+
+    prefix = 'na%03d-nt%03d-sn%02d' % (numAgents, numTasks, seedNum)
+    agents = gen_agents(seedNum, prefix, gNum, numAgents, dpath='_temp')
+    tasks = gen_tasks(seedNum, prefix, numTasks, agents, dpath='_temp')
+    prob = gen_prmt_AGTK(agents, tasks, prefix, dpath='_temp', tb_ratio=1.05)
+    prob_pkl2json(prob, dpath='_temp')
